@@ -1,5 +1,5 @@
 <?php
-namespace Larasahib\AppInsightsLaravel\Exceptions;
+namespace Sormagec\AppInsightsLaravel\Exceptions;
 
 class InvalidInstrumentationKeyException extends AppInsightsException
 {

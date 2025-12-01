@@ -1,6 +1,6 @@
 <?php
 
-namespace Larasahib\AppInsightsLaravel\Support;
+namespace Sormagec\AppInsightsLaravel\Support;
 
 use Illuminate\Support\Facades\Config as LaravelConfig;
 

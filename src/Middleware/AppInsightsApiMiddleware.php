@@ -1,9 +1,9 @@
 <?php
-namespace Larasahib\AppInsightsLaravel\Middleware;
+namespace Sormagec\AppInsightsLaravel\Middleware;
 
 use Closure;
-use Larasahib\AppInsightsLaravel\AppInsightsHelpers;
-use Larasahib\AppInsightsLaravel\Support\Logger;
+use Sormagec\AppInsightsLaravel\AppInsightsHelpers;
+use Sormagec\AppInsightsLaravel\Support\Logger;
 
 class AppInsightsApiMiddleware
 {

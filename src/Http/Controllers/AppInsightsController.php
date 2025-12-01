@@ -1,12 +1,12 @@
 <?php
 
-namespace Larasahib\AppInsightsLaravel\Http\Controllers;
+namespace Sormagec\AppInsightsLaravel\Http\Controllers;
 
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Larasahib\AppInsightsLaravel\AppInsightsServer;
-use Larasahib\AppInsightsLaravel\Support\Logger;
+use Sormagec\AppInsightsLaravel\AppInsightsServer;
+use Sormagec\AppInsightsLaravel\Support\Logger;
 
 class AppInsightsController extends Controller
 {

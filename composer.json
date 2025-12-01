@@ -1,7 +1,7 @@
 {
-    "name": "larasahib/application-insights-laravel",
-    "description": "Microsoft Azure Application Insights for Laravel 10",
-    "homepage": "https://github.com/GitSahib/application-insights-laravel",
+    "name": "sormagec/application-insights-laravel",
+    "description": "Microsoft Azure Application Insights for Laravel 10+ - A fully maintained package for pushing telemetry to Azure Application Insights",
+    "homepage": "https://github.com/bsormagec/application-insights-laravel",
     "license": "MIT",
     "keywords": [
         "Laravel",
@@ -9,35 +9,49 @@
         "Azure",
         "Application Insights",
         "monitoring",
-        "logging"
-    ],    
-    "minimum-stability": "dev",
+        "logging",
+        "telemetry",
+        "APM",
+        "performance"
+    ],
+    "minimum-stability": "stable",
+    "prefer-stable": true,
     "authors": [
         {
+            "name": "Burak Sormagec",
+            "email": "bsormagec@gmail.com",
+            "homepage": "https://github.com/bsormagec"
+        },
+        {
             "name": "Sahib",
-            "email": "sahib.zer@gmail.com"
+            "email": "sahib.zer@gmail.com",
+            "role": "Original Author"
         }
     ],
     "require": {
         "php": ">=8.1",
-        "laravel/framework": ">=8.0",
-        "guzzlehttp/guzzle": ">=6.0"
+        "laravel/framework": ">=10.0",
+        "guzzlehttp/guzzle": ">=7.0"
     },
     "autoload": {
         "psr-4": {
-            "Larasahib\\AppInsightsLaravel\\": "src/"
+            "Sormagec\\AppInsightsLaravel\\": "src/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "Larasahib\\AppInsightsLaravel\\Providers\\AppInsightsServiceProvider"
+                "Sormagec\\AppInsightsLaravel\\Providers\\AppInsightsServiceProvider"
             ],
             "aliases": {
-                "AIClient": "Larasahib\\AppInsightsLaravel\\Facades\\AppInsightsClientFacade",
-                "AIServer": "Larasahib\\AppInsightsLaravel\\Facades\\AppInsightsServerFacade",
-                "AIQueue": "Larasahib\\AppInsightsLaravel\\Facades\\AppInsightsQueueFacade"
+                "AIClient": "Sormagec\\AppInsightsLaravel\\Facades\\AppInsightsClientFacade",
+                "AIServer": "Sormagec\\AppInsightsLaravel\\Facades\\AppInsightsServerFacade",
+                "AIQueue": "Sormagec\\AppInsightsLaravel\\Facades\\AppInsightsQueueFacade"
             }
         }
+    },
+    "support": {
+        "issues": "https://github.com/bsormagec/application-insights-laravel/issues",
+        "source": "https://github.com/bsormagec/application-insights-laravel"
     }
 }

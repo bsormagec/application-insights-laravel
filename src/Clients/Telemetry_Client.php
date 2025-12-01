@@ -1,10 +1,10 @@
 <?php
-namespace Larasahib\AppInsightsLaravel\Clients;
-use Larasahib\AppInsightsLaravel\Exceptions\AppInsightsException;
+namespace Sormagec\AppInsightsLaravel\Clients;
+use Sormagec\AppInsightsLaravel\Exceptions\AppInsightsException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
-use Larasahib\AppInsightsLaravel\Support\Config;
-use Larasahib\AppInsightsLaravel\Support\Logger;
+use Sormagec\AppInsightsLaravel\Support\Config;
+use Sormagec\AppInsightsLaravel\Support\Logger;
 use Illuminate\Support\Facades\Http;
 
 class Telemetry_Client

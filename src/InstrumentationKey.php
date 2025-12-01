@@ -1,7 +1,8 @@
 <?php
-namespace Larasahib\AppInsightsLaravel;
-use Illuminate\Support\Facades\Log;
-use Larasahib\AppInsightsLaravel\Support\Config;
+namespace Sormagec\AppInsightsLaravel;
+
+use Sormagec\AppInsightsLaravel\Support\Config;
+use Sormagec\AppInsightsLaravel\Support\Logger;
 
 class InstrumentationKey
 {
@@ -24,9 +25,10 @@ class InstrumentationKey
             $this->connectionString = $connectionString;
             return;
         }
-        else if (!empty($this->instrumentationKey)) {
-            //deprecated
-            Log::warning('Using instrumentation_key is deprecated, please use connection string by setting MS_AI_CONNECTION_STRING in your .env file to use connection string instead of instrumentation key.');
+        
+        if (!empty($this->instrumentationKey)) {
+            // Deprecated warning - only log if logging is enabled
+            Logger::warning('Using instrumentation_key is deprecated. Set MS_AI_CONNECTION_STRING in your .env file instead.');
             return;
         }
 

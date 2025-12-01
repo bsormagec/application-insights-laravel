@@ -1,5 +1,5 @@
 <?php
-namespace Larasahib\AppInsightsLaravel;
+namespace Sormagec\AppInsightsLaravel;
 
 use Carbon\Carbon;
 use Throwable;

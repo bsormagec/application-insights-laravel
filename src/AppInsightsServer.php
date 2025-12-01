@@ -1,8 +1,8 @@
 <?php
-namespace Larasahib\AppInsightsLaravel;
+namespace Sormagec\AppInsightsLaravel;
 
-use Larasahib\AppInsightsLaravel\Clients\Telemetry_Client;
-use Larasahib\AppInsightsLaravel\Support\Logger;
+use Sormagec\AppInsightsLaravel\Clients\Telemetry_Client;
+use Sormagec\AppInsightsLaravel\Support\Logger;
 
 class AppInsightsServer extends InstrumentationKey
 {
@@ -15,7 +15,7 @@ class AppInsightsServer extends InstrumentationKey
     {
         try {
             parent::__construct();
-            Logger::info('AppInsightsServer initialized with ' . (isset($this->connectionString) ? 'connection string.' : (isset($this->instrumentationKey) ? 'instrumentation key.' : 'no configuration.')));
+            Logger::debug('AppInsightsServer initialized with ' . (isset($this->connectionString) ? 'connection string.' : (isset($this->instrumentationKey) ? 'instrumentation key.' : 'no configuration.')));
             if (isset($this->connectionString)) {
                 $this->telemetryClient = $telemetryClient;
                 $this->telemetryClient->setConnectionString($this->connectionString);
@@ -28,7 +28,6 @@ class AppInsightsServer extends InstrumentationKey
             }
         } catch (\Throwable $e) {
             Logger::error('AppInsightsServer constructor error: ' . $e->getMessage(), ['exception' => $e]);
-            // Optionally cache or handle error here
         }
     }
 

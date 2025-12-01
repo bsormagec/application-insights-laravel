@@ -1,15 +1,15 @@
 <?php 
 
-namespace Larasahib\AppInsightsLaravel\Providers;
+namespace Sormagec\AppInsightsLaravel\Providers;
 
-use Larasahib\AppInsightsLaravel\Clients\Telemetry_Client;
+use Sormagec\AppInsightsLaravel\Clients\Telemetry_Client;
 use Laravel\Lumen\Application as LumenApplication;
 use Illuminate\Support\ServiceProvider as LaravelServiceProvider;
-use Larasahib\AppInsightsLaravel\Middleware\AppInsightsWebMiddleware;
-use Larasahib\AppInsightsLaravel\Middleware\AppInsightsApiMiddleware;
-use Larasahib\AppInsightsLaravel\AppInsightsClient;
-use Larasahib\AppInsightsLaravel\AppInsightsHelpers;
-use Larasahib\AppInsightsLaravel\AppInsightsServer;
+use Sormagec\AppInsightsLaravel\Middleware\AppInsightsWebMiddleware;
+use Sormagec\AppInsightsLaravel\Middleware\AppInsightsApiMiddleware;
+use Sormagec\AppInsightsLaravel\AppInsightsClient;
+use Sormagec\AppInsightsLaravel\AppInsightsHelpers;
+use Sormagec\AppInsightsLaravel\AppInsightsServer;
 
 class AppInsightsServiceProvider extends LaravelServiceProvider {
 
@@ -36,20 +36,33 @@ class AppInsightsServiceProvider extends LaravelServiceProvider {
      */
     public function register()
     {
-        $this->app->singleton('AppInsightsServer', function ($app) {
-            $telemetryClient = new Telemetry_Client();
-            return new AppInsightsServer($telemetryClient);
+        // Register Telemetry_Client as singleton
+        $this->app->singleton(Telemetry_Client::class, function ($app) {
+            return new Telemetry_Client();
         });
 
-        $this->app->singleton('AppInsightsWebMiddleware', function ($app) {
-            $appInsightsHelpers = new AppInsightsHelpers($app['AppInsightsServer']);
-            return new AppInsightsWebMiddleware($appInsightsHelpers);
+        // Register AppInsightsServer as singleton
+        $this->app->singleton('AppInsightsServer', function ($app) {
+            return new AppInsightsServer($app->make(Telemetry_Client::class));
         });
+        $this->app->alias('AppInsightsServer', AppInsightsServer::class);
+
+        // Register AppInsightsHelpers as singleton (prevents multiple initializations)
+        $this->app->singleton(AppInsightsHelpers::class, function ($app) {
+            return new AppInsightsHelpers($app->make('AppInsightsServer'));
+        });
+        $this->app->alias(AppInsightsHelpers::class, 'AppInsightsHelpers');
+
+        // Register middlewares as singletons using the shared AppInsightsHelpers
+        $this->app->singleton('AppInsightsWebMiddleware', function ($app) {
+            return new AppInsightsWebMiddleware($app->make(AppInsightsHelpers::class));
+        });
+        $this->app->alias('AppInsightsWebMiddleware', AppInsightsWebMiddleware::class);
 
         $this->app->singleton('AppInsightsApiMiddleware', function ($app) {
-            $appInsightsHelpers = new AppInsightsHelpers($app['AppInsightsServer']);
-            return new AppInsightsApiMiddleware($appInsightsHelpers);
+            return new AppInsightsApiMiddleware($app->make(AppInsightsHelpers::class));
         });
+        $this->app->alias('AppInsightsApiMiddleware', AppInsightsApiMiddleware::class);
 
         $this->app->singleton('AppInsightsClient', function ($app) {
             return new AppInsightsClient();
@@ -65,9 +78,15 @@ class AppInsightsServiceProvider extends LaravelServiceProvider {
 
         return [
             'AppInsightsServer',
+            AppInsightsServer::class,
             'AppInsightsWebMiddleware',
+            AppInsightsWebMiddleware::class,
+            'AppInsightsApiMiddleware',
+            AppInsightsApiMiddleware::class,
             'AppInsightsClient',
-            "AppInsightsApiMiddleware"
+            'AppInsightsHelpers',
+            AppInsightsHelpers::class,
+            Telemetry_Client::class,
         ];
     }
 
