@@ -12,6 +12,9 @@ A fully maintained Laravel package for Microsoft Azure Application Insights inte
 
 - ✅ **Request Tracking** - Automatic HTTP request monitoring
 - ✅ **Exception Tracking** - Automatic error reporting to Azure
+- ✅ **Slow Query Tracking** - Automatic slow database query monitoring
+- ✅ **Failed Job Tracking** - Automatic queue job failure reporting
+- ✅ **Mail Tracking** - Track sent emails
 - ✅ **Custom Events** - Track custom events and metrics
 - ✅ **Trace Logging** - Send log messages to Application Insights
 - ✅ **Queue Support** - Async telemetry via Laravel queues (Redis, etc.)
@@ -56,6 +59,15 @@ MS_AI_ENABLE_LOGGING=0
 
 # Max query parameters to include in telemetry
 MS_AI_MAX_QUERY_PARAMS=10
+
+# Slow query threshold in milliseconds (queries slower than this are tracked)
+MS_AI_DB_SLOW_MS=500
+
+# Feature toggles (all enabled by default)
+MS_AI_FEATURE_DB=true
+MS_AI_FEATURE_JOBS=true
+MS_AI_FEATURE_MAIL=true
+MS_AI_FEATURE_HTTP=true
 ```
 
 > ⚠️ **Note:** `MS_INSTRUMENTATION_KEY` is deprecated. Use `MS_AI_CONNECTION_STRING` instead.
@@ -162,6 +174,44 @@ autorestart=true
 numprocs=1
 ```
 
+## Automatic Tracking Features
+
+The following telemetry is collected automatically without any additional configuration:
+
+### Slow Database Queries
+
+Queries slower than the configured threshold (`MS_AI_DB_SLOW_MS`, default 500ms) are automatically tracked as dependencies in Application Insights.
+
+**Tracked Properties:**
+- `db.sql` - The SQL query (truncated for safety)
+- `db.duration_ms` - Query duration in milliseconds
+- `db.connection` - Database connection name
+
+To disable: `MS_AI_FEATURE_DB=false`
+
+### Failed Queue Jobs
+
+Failed queue jobs are automatically tracked as exceptions in Application Insights.
+
+**Tracked Properties:**
+- `job.name` - The job class name
+- `job.queue` - The queue name
+- `job.connection` - Queue connection name
+- `job.payload` - Job payload (truncated)
+
+To disable: `MS_AI_FEATURE_JOBS=false`
+
+### Sent Emails
+
+Sent emails are tracked as custom events in Application Insights.
+
+**Tracked Properties:**
+- `mail.to` - Number of recipients
+- `mail.subject` - Email subject
+- `mail.class` - Notification class name (if available)
+
+To disable: `MS_AI_FEATURE_MAIL=false`
+
 ## Publishing Assets
 
 ### Configuration
@@ -175,6 +225,14 @@ php artisan vendor:publish --tag=laravel-assets
 ```
 
 ## Changelog
+
+### v2.1.0
+- ✨ Added slow database query tracking
+- ✨ Added failed queue job tracking
+- ✨ Added mail sent tracking
+- ✨ Added `trackDbQuery()` and `trackDependency()` methods
+- ✨ Added feature toggles for granular control
+- 📝 Updated documentation with new features
 
 ### v2.0.0
 - 🔄 Forked and rebranded from `larasahib/application-insights-laravel`

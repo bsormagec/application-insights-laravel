@@ -362,6 +362,97 @@ class Telemetry_Client
         $this->sendPayload($payload);
     }
 
+    /**
+     * Tracks a database query (typically slow queries) with the Application Insights service.
+     * 
+     * @param string $sql The SQL query.
+     * @param float $durationMs The duration of the query in milliseconds.
+     * @param array $properties Additional properties to include with the query.
+     * @return void
+     */
+    public function trackDbQuery(string $sql, float $durationMs, array $properties = [])
+    {
+        $properties = array_merge($this->globalProperties ?? [], $properties, [
+            'db.sql' => $this->sanitizeSql($sql),
+            'db.duration_ms' => $durationMs,
+        ]);
+
+        $payload = [
+            'name' => 'Microsoft.ApplicationInsights.RemoteDependency',
+            'time' => Carbon::now()->toIso8601ZuluString(),
+            'iKey' => $this->instrumentationKey,
+            'data' => [
+                'baseType' => 'RemoteDependencyData',
+                'baseData' => [
+                    'ver' => 2,
+                    'name' => 'SQL Query',
+                    'id' => bin2hex(random_bytes(8)),
+                    'data' => $this->sanitizeSql($sql),
+                    'duration' => $this->formatDuration($durationMs),
+                    'success' => true,
+                    'type' => 'SQL',
+                    'target' => $properties['db.connection'] ?? 'database',
+                    'properties' => $properties,
+                ]
+            ]
+        ];
+
+        $this->sendPayload($payload);
+    }
+
+    /**
+     * Tracks a dependency call (HTTP, SQL, etc.) with the Application Insights service.
+     * 
+     * @param string $type The type of dependency (HTTP, SQL, etc.).
+     * @param string $target The target of the dependency (hostname, database name, etc.).
+     * @param string $name The name of the dependency call.
+     * @param float $durationMs The duration of the call in milliseconds.
+     * @param bool $success Whether the call was successful.
+     * @param array $properties Additional properties to include.
+     * @return void
+     */
+    public function trackDependency(string $type, string $target, string $name, float $durationMs, bool $success = true, array $properties = [])
+    {
+        $properties = array_merge($this->globalProperties ?? [], $properties);
+
+        $payload = [
+            'name' => 'Microsoft.ApplicationInsights.RemoteDependency',
+            'time' => Carbon::now()->toIso8601ZuluString(),
+            'iKey' => $this->instrumentationKey,
+            'data' => [
+                'baseType' => 'RemoteDependencyData',
+                'baseData' => [
+                    'ver' => 2,
+                    'name' => $name,
+                    'id' => bin2hex(random_bytes(8)),
+                    'duration' => $this->formatDuration($durationMs),
+                    'success' => $success,
+                    'type' => $type,
+                    'target' => $target,
+                    'properties' => $properties,
+                ]
+            ]
+        ];
+
+        $this->sendPayload($payload);
+    }
+
+    /**
+     * Sanitize SQL query by removing sensitive data patterns.
+     * 
+     * @param string $sql
+     * @return string
+     */
+    protected function sanitizeSql(string $sql): string
+    {
+        // Limit SQL length to prevent large payloads
+        $maxLength = (int) Config::get('max_sql_length', 1000);
+        if (strlen($sql) > $maxLength) {
+            $sql = substr($sql, 0, $maxLength) . '...';
+        }
+        return $sql;
+    }
+
     protected function sendPayload(array $payload)
     {
         $this->buffer[] = $payload;

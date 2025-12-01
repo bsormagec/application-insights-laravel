@@ -5,11 +5,17 @@ namespace Sormagec\AppInsightsLaravel\Providers;
 use Sormagec\AppInsightsLaravel\Clients\Telemetry_Client;
 use Laravel\Lumen\Application as LumenApplication;
 use Illuminate\Support\ServiceProvider as LaravelServiceProvider;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Mail\Events\MessageSent;
 use Sormagec\AppInsightsLaravel\Middleware\AppInsightsWebMiddleware;
 use Sormagec\AppInsightsLaravel\Middleware\AppInsightsApiMiddleware;
 use Sormagec\AppInsightsLaravel\AppInsightsClient;
 use Sormagec\AppInsightsLaravel\AppInsightsHelpers;
 use Sormagec\AppInsightsLaravel\AppInsightsServer;
+use Sormagec\AppInsightsLaravel\Listeners\LogSlowQuery;
+use Sormagec\AppInsightsLaravel\Listeners\LogJobFailed;
+use Sormagec\AppInsightsLaravel\Listeners\LogMailSent;
 
 class AppInsightsServiceProvider extends LaravelServiceProvider {
 
@@ -27,6 +33,7 @@ class AppInsightsServiceProvider extends LaravelServiceProvider {
      */
     public function boot() {
         $this->handleConfigs();
+        $this->registerEventListeners();
     }
 
     /**
@@ -107,6 +114,23 @@ class AppInsightsServiceProvider extends LaravelServiceProvider {
 
         $this->mergeConfigFrom($configPath, 'appinsights-laravel');
         
+    }
+
+    /**
+     * Register event listeners for automatic telemetry tracking.
+     */
+    private function registerEventListeners(): void
+    {
+        $events = $this->app['events'];
+
+        // Listen for slow database queries
+        $events->listen(QueryExecuted::class, LogSlowQuery::class);
+
+        // Listen for failed queue jobs
+        $events->listen(JobFailed::class, LogJobFailed::class);
+
+        // Listen for sent emails
+        $events->listen(MessageSent::class, LogMailSent::class);
     }
 
     /**

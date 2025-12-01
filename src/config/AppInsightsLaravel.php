@@ -52,4 +52,43 @@ return [
      */
     'max_query_params' => env('MS_AI_MAX_QUERY_PARAMS', 10),
 
+    /*
+     * Max SQL Length
+     * ===============
+     *
+     * Maximum length of SQL queries to include in telemetry.
+     * Longer queries will be truncated to prevent large payloads.
+     */
+    'max_sql_length' => env('MS_AI_MAX_SQL_LENGTH', 1000),
+
+    /*
+     * Slow Query Threshold
+     * =====================
+     *
+     * Only log database queries slower than this value (in milliseconds).
+     * Set to 0 to log all queries (not recommended for production).
+     */
+    'db_slow_ms' => env('MS_AI_DB_SLOW_MS', 500),
+
+    /*
+     * Feature Toggles
+     * ================
+     *
+     * Enable or disable specific telemetry features.
+     * Useful for reducing noise or focusing on specific areas.
+     */
+    'features' => [
+        // Track slow database queries
+        'db' => env('MS_AI_FEATURE_DB', true),
+        
+        // Track failed queue jobs
+        'jobs' => env('MS_AI_FEATURE_JOBS', true),
+        
+        // Track sent emails
+        'mail' => env('MS_AI_FEATURE_MAIL', true),
+        
+        // Track HTTP requests (via middleware)
+        'http' => env('MS_AI_FEATURE_HTTP', true),
+    ],
+
 ];
