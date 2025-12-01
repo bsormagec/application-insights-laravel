@@ -2,7 +2,6 @@
 namespace Sormagec\AppInsightsLaravel\Handlers;
 use Sormagec\AppInsightsLaravel\AppInsightsHelpers;
 use Throwable;
-use Illuminate\Contracts\Container\Container;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Sormagec\AppInsightsLaravel\Support\Logger;
 
@@ -12,17 +11,6 @@ class AppInsightsExceptionHandler extends ExceptionHandler
      * @var AppInsightsHelpers|null
      */
     private ?AppInsightsHelpers $appInsightsHelpers = null;
-
-    /**
-     * @var Container
-     */
-    private Container $container;
-
-    public function __construct(Container $container)
-    {
-        parent::__construct($container);
-        $this->container = $container;
-    }
 
     /**
      * Get AppInsightsHelpers instance lazily from container
