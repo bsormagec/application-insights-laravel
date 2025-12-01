@@ -70,8 +70,6 @@ MS_AI_FEATURE_MAIL=true
 MS_AI_FEATURE_HTTP=true
 ```
 
-> ⚠️ **Note:** `MS_INSTRUMENTATION_KEY` is deprecated. Use `MS_AI_CONNECTION_STRING` instead.
-
 ### Where to find the Connection String
 
 Azure Portal → Application Insights → Overview → Connection String

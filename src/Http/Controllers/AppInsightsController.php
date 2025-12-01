@@ -10,16 +10,43 @@ use Sormagec\AppInsightsLaravel\Support\Logger;
 
 class AppInsightsController extends Controller
 {
+    /**
+     * Maximum payload size in bytes (100KB)
+     */
+    private const MAX_PAYLOAD_SIZE = 102400;
+
+    /**
+     * Maximum number of items per batch
+     */
+    private const MAX_BATCH_SIZE = 50;
+
     public function collect(Request $request)
     {
         try {
+            // Validate payload size to prevent abuse
+            $contentLength = $request->header('Content-Length', 0);
+            if ($contentLength > self::MAX_PAYLOAD_SIZE) {
+                return response()->json(['status' => 'error', 'message' => 'Payload too large'], 413);
+            }
+
             $payload = $request->all();
+
+            // Validate payload is not empty
+            if (empty($payload)) {
+                return response()->json(['status' => 'error', 'message' => 'Empty payload'], 400);
+            }
 
             /** @var AppInsightsServer $server */
             $server = app('AppInsightsServer');
 
             // Support batching: if multiple telemetry items are sent at once
             $items = isset($payload[0]) && is_array($payload) ? $payload : [$payload];
+
+            // Limit batch size to prevent abuse
+            if (count($items) > self::MAX_BATCH_SIZE) {
+                $items = array_slice($items, 0, self::MAX_BATCH_SIZE);
+                Logger::warning('Batch size exceeded limit, truncated to ' . self::MAX_BATCH_SIZE . ' items');
+            }
 
             foreach ($items as $item) {
                 $type = $item['type'] ?? null;
