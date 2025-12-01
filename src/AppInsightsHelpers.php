@@ -2,12 +2,16 @@
 namespace Sormagec\AppInsightsLaravel;
 
 use Carbon\Carbon;
+use Exception;
 use Throwable;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Support\Facades\Log;
+use Sormagec\AppInsightsLaravel\Facades\AppInsightsServerFacade as AIServer;
+use Sormagec\AppInsightsLaravel\Facades\AppInsightsQueueFacade as AIQueue;
+
 class AppInsightsHelpers
 {
 
@@ -41,8 +45,7 @@ class AppInsightsHelpers
         }
 
         $properties = $this->getPageViewProperties($request);
-        /** @disregard Undefined type 'AIServer' */
-        \AIServer::trackMessage('browse_duration', $properties);
+        AIServer::trackMessage('browse_duration', $properties);
         $this->flush();
         
     }
@@ -65,8 +68,7 @@ class AppInsightsHelpers
             return;
         }
         $properties = $this->getRequestProperties($request);
-        /** @disregard Undefined type 'AIServer' */
-        \AIServer::trackRequest(
+        AIServer::trackRequest(
             $properties['route'] ?? 'application',
             $request->fullUrl(),
             $this->getRequestDuration(),
@@ -89,8 +91,7 @@ class AppInsightsHelpers
         {
             return;
         }
-        /** @disregard Undefined type 'AIServer' */
-        \AIServer::trackException($e, $this->getRequestPropertiesFromException($e) ?? []);
+        AIServer::trackException($e, $this->getRequestPropertiesFromException($e) ?? []);
         $this->flush();
     }
 
@@ -103,8 +104,7 @@ class AppInsightsHelpers
         $queue_seconds = $this->appInsights->getFlushQueueAfterSeconds();
         if($queue_seconds)
         {
-            /** @disregard Undefined type 'AIServer' */
-            \AIQueue::dispatch(\AIServer::getQueue())
+            AIQueue::dispatch(AIServer::getQueue())
             ->onQueue('appinsights-queue')
             ->delay(Carbon::now()->addSeconds($queue_seconds));
         }
@@ -112,10 +112,9 @@ class AppInsightsHelpers
         {
             try 
             {  
-                /** @disregard Undefined type 'AIServer' */
-               \AIServer::flush();
+               AIServer::flush();
             }
-            catch(\Exception $e)
+            catch(Exception $e)
             {
                 Log::debug('Exception: Could not flush AIServer server. Error:'.$e->getMessage());
             }

@@ -9,6 +9,7 @@ use Illuminate\Queue\SerializesModels;
 use GuzzleHttp\Exception\RequestException;
 use Exception;
 use Illuminate\Support\Facades\Log;
+use Sormagec\AppInsightsLaravel\Facades\AppInsightsServerFacade as AIServer;
 
 class AppInsightsTelemeteryQueue implements ShouldQueue
 {
@@ -38,8 +39,7 @@ class AppInsightsTelemeteryQueue implements ShouldQueue
         }
         try 
         { 
-           /** @disregard Undefined type 'AIServer' */
-           \AIServer::setQueue($this->data);
+           AIServer::setQueue($this->data);
         }        
         catch (RequestException $e) 
         {

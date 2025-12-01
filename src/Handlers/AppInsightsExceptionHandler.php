@@ -32,7 +32,7 @@ class AppInsightsExceptionHandler extends ExceptionHandler
         if ($this->appInsightsHelpers === null) {
             try {
                 $this->appInsightsHelpers = $this->container->make(AppInsightsHelpers::class);
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 Logger::error('Could not resolve AppInsightsHelpers: ' . $e->getMessage());
                 return null;
             }
@@ -53,7 +53,7 @@ class AppInsightsExceptionHandler extends ExceptionHandler
             if ($helpers) {
                 $helpers->trackException($e);
             }
-        } catch (\Throwable $ex) {
+        } catch (Throwable $ex) {
             Logger::error('AppInsightsExceptionHandler telemetry error: ' . $ex->getMessage(), ['exception' => $ex]);
         }
         

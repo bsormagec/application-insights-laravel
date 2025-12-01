@@ -142,12 +142,18 @@ class Telemetry_Client
     }
 
     /**
-     * Format the duration in milliseconds to a string format.
+     * Track a request to the application.
      *
+     * @param string $name
+     * @param string $url
      * @param float $durationMs
-     * @return string
+     * @param int $responseCode
+     * @param bool $success
+     * @param array $properties
+     * @param array $measurements
+     * @return void
      */
-    public function trackRequest(string $name, string $url, float $durationMs, int $responseCode, bool $success, $properties = [], $measurements = [])
+    public function trackRequest(string $name, string $url, float $durationMs, int $responseCode, bool $success, $properties = [], $measurements = []): void
     {
         $urlParts = parse_url($url);
         $baseUrl = ($urlParts['scheme'] ?? '') . '://' .
