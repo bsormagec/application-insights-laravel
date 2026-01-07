@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Http;
 
 class Telemetry_Client
 {
-    
+
     protected $baseUrl = 'https://dc.services.visualstudio.com';
     /**
      * Buffer for telemetry items to be sent.
@@ -17,7 +17,7 @@ class Telemetry_Client
      * @var array
      */
     protected $buffer = [];
-    
+
     /**
      * Limit for the buffer before it automatically flushes.
      *
@@ -53,7 +53,7 @@ class Telemetry_Client
     {
         // Flush at script end
         register_shutdown_function(function () {
-            if(count($this->buffer) > $this->bufferLimit){
+            if (count($this->buffer) > $this->bufferLimit) {
                 $this->flush();
             }
         });
@@ -71,14 +71,14 @@ class Telemetry_Client
             Log::error('Telemetry data cannot be empty.');
             return;
         }
-        
-        if($this->buffer === null) {
+
+        if ($this->buffer === null) {
             $this->buffer = [];
         }
 
         array_push($this->buffer, ...$data);
 
-        if(count($this->buffer) >= $this->bufferLimit) {
+        if (count($this->buffer) >= $this->bufferLimit) {
             $this->flush(); // Auto-flush
         }
     }
@@ -92,20 +92,19 @@ class Telemetry_Client
     {
         return $this->buffer;
     }
-    
+
     /**
      * Sets the connection string for the Application Insights service.
      *
      * @param string $connectionString
      * @throws AppInsightsException
-     */ 
+     */
     public function setConnectionString($connectionString)
     {
-        if(Config::get('enable_local_logging', false)){
+        if (Config::get('enable_local_logging', false)) {
             Log::debug('AI Setting ConnString to ', ['payload' => $connectionString]);
         }
-        if (!empty($connectionString))
-        {
+        if (!empty($connectionString)) {
             $this->connectionString = $connectionString;
             preg_match('/IngestionEndpoint=(.+?);/', $connectionString, $matches);
             $endpoint = $matches[1] ?? $this->baseUrl;
@@ -113,7 +112,7 @@ class Telemetry_Client
             $url = rtrim($endpoint, '/');
             $this->baseUrl = $url;
         }
-        if(!empty($instrumentationKey)) {
+        if (!empty($instrumentationKey)) {
             $this->instrumentationKey = $instrumentationKey;
         }
     }
@@ -157,8 +156,8 @@ class Telemetry_Client
     {
         $urlParts = parse_url($url);
         $baseUrl = ($urlParts['scheme'] ?? '') . '://' .
-               ($urlParts['host'] ?? '') .
-               ($urlParts['path'] ?? '');
+        ($urlParts['host'] ?? '') .
+        ($urlParts['path'] ?? '');
         // Query parameters (array)
         $queryParams = [];
         if (!empty($urlParts['query'])) {
@@ -177,18 +176,18 @@ class Telemetry_Client
             'time' => Carbon::now()->toIso8601ZuluString(),
             'iKey' => $this->instrumentationKey,
             'data' => [
-                'baseType' => 'RequestData',
-                'baseData' => [
-                    'ver' => 1,
-                    'id' => uniqid(),
-                    'name' => $name,
-                    'duration' => $this->formatDuration($durationMs),
-                    'responseCode' => (string) $responseCode,
-                    'success' => $success,
-                    'url' => $baseUrl,
-                    'properties' => $properties,
+                    'baseType' => 'RequestData',
+                    'baseData' => [
+                            'ver' => 1,
+                            'id' => uniqid(),
+                            'name' => $name,
+                            'duration' => $this->formatDuration($durationMs),
+                            'responseCode' => (string) $responseCode,
+                            'success' => $success,
+                            'url' => $baseUrl,
+                            'properties' => $properties,
+                        ]
                 ]
-            ]
         ];
 
         $this->sendPayload($payload);
@@ -251,19 +250,21 @@ class Telemetry_Client
             'time' => Carbon::now()->toIso8601ZuluString(),
             'iKey' => $this->instrumentationKey,
             'data' => [
-                'baseType' => 'ExceptionData',
-                'baseData' => [
-                    'ver' => 2,
-                    'exceptions' => [[
-                        'typeName' => get_class($exception),
-                        'message' => $exception->getMessage(),
-                        'hasFullStack' => true,
-                        'parsedStack' => $trace,
-                    ]],
-                    'severityLevel' => 3, // 0=Verbose, 1=Info, 2=Warning, 3=Error, 4=Critical
-                    'properties' => $properties
+                    'baseType' => 'ExceptionData',
+                    'baseData' => [
+                            'ver' => 2,
+                            'exceptions' => [
+                                    [
+                                        'typeName' => get_class($exception),
+                                        'message' => $exception->getMessage(),
+                                        'hasFullStack' => true,
+                                        'parsedStack' => $trace,
+                                    ]
+                                ],
+                            'severityLevel' => 3, // 0=Verbose, 1=Info, 2=Warning, 3=Error, 4=Critical
+                            'properties' => $properties
+                        ]
                 ]
-            ]
         ];
 
         $this->sendPayload($payload);
@@ -462,7 +463,7 @@ class Telemetry_Client
     protected function sendPayload(array $payload)
     {
         $this->buffer[] = $payload;
-        if(Config::get('enable_local_logging', false)){
+        if (Config::get('enable_local_logging', false)) {
             Log::debug('Added payload to buffer', ['payload' => $payload]);
         }
         if (count($this->buffer) >= $this->bufferLimit) {
@@ -481,7 +482,7 @@ class Telemetry_Client
             }
         }
         if (empty($this->buffer) && $enableLocalLogging) {
-             Logger::debug('empty buffer response', ['body' => 'No data to send']);
+            Logger::debug('empty buffer response', ['body' => 'No data to send']);
             return;
         }
 
@@ -494,11 +495,11 @@ class Telemetry_Client
             $response = Http::withHeaders([
                 'Content-Type' => 'application/x-ndjson',
             ])->withBody(
-                $this->formatBatchPayload(),
-                'application/x-ndjson'
-            )->post($this->baseUrl . '/v2/track', [
-                'iKey' => $this->instrumentationKey,
-            ]);
+                    $this->formatBatchPayload(),
+                    'application/x-ndjson'
+                )->post($this->baseUrl . '/v2/track', [
+                        'iKey' => $this->instrumentationKey,
+                    ]);
 
             if ($enableLocalLogging && function_exists('logger')) {
                 Logger::debug('Raw AppInsights response', ['body' => $response->body()]);
@@ -547,7 +548,7 @@ class Telemetry_Client
         $minutes = floor(($milliseconds % 3600000) / 60000);
         $seconds = floor(($milliseconds % 60000) / 1000);
         $ms = $milliseconds % 1000;
-        if (Config::get('enableLocalLogging', false)){
+        if (Config::get('enable_local_logging', false)) {
             Log::info("AppInsights duration formatted: {$milliseconds} {$hours}:{$minutes}:{$seconds}.{$ms}");
         }
         return sprintf('%02d:%02d:%02d.%03d', $hours, $minutes, $seconds, $ms);

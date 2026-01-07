@@ -11,10 +11,10 @@ use Exception;
 use Illuminate\Support\Facades\Log;
 use Sormagec\AppInsightsLaravel\Facades\AppInsightsServerFacade as AIServer;
 
-class AppInsightsTelemeteryQueue implements ShouldQueue
+class AppInsightsTelemetryQueue implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-    
+
     /**
      * Create a new job instance.
      *
@@ -33,23 +33,17 @@ class AppInsightsTelemeteryQueue implements ShouldQueue
      */
     public function handle()
     {
-        if(empty($this->data))
-        {
-          return;
+        if (empty($this->data)) {
+            return;
         }
-        try 
-        { 
-           AIServer::setQueue($this->data);
-        }        
-        catch (RequestException $e) 
-        {
-            Log::debug('RequestException: Could not flush AIServer server. Error:'.$e->getMessage());
-            Log::debug('Queue: '. json_encode($this->data));
-        }
-        catch(Exception $e)
-        {
-            Log::debug('Exception: Could not flush AIServer server. Error:'.$e->getMessage());
-            Log::debug('Queue: '. json_encode($this->data));
+        try {
+            AIServer::setQueue($this->data);
+        } catch (RequestException $e) {
+            Log::debug('RequestException: Could not flush AIServer server. Error:' . $e->getMessage());
+            Log::debug('Queue: ' . json_encode($this->data));
+        } catch (Exception $e) {
+            Log::debug('Exception: Could not flush AIServer server. Error:' . $e->getMessage());
+            Log::debug('Queue: ' . json_encode($this->data));
         }
     }
 }

@@ -3,7 +3,6 @@
 namespace Sormagec\AppInsightsLaravel\Listeners;
 
 use Illuminate\Mail\Events\MessageSent;
-use Illuminate\Mail\Events\MessageSending;
 use Sormagec\AppInsightsLaravel\AppInsightsServer;
 use Sormagec\AppInsightsLaravel\Support\Config;
 use Sormagec\AppInsightsLaravel\Support\Logger;
@@ -12,7 +11,8 @@ class LogMailSent
 {
     public function __construct(
         protected AppInsightsServer $appInsights
-    ) {}
+    ) {
+    }
 
     /**
      * Handle the MessageSent event.

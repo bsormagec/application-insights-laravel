@@ -8,6 +8,7 @@ use GuzzleHttp\Exception\RequestException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Illuminate\Support\Facades\Log;
 use Sormagec\AppInsightsLaravel\Facades\AppInsightsServerFacade as AIServer;
 use Sormagec\AppInsightsLaravel\Facades\AppInsightsQueueFacade as AIQueue;
@@ -23,7 +24,7 @@ class AppInsightsHelpers
 
     public function __construct(AppInsightsServer $appInsights)
     {
-        $this->appInsights = $appInsights; 
+        $this->appInsights = $appInsights;
     }
 
     /**
@@ -34,20 +35,18 @@ class AppInsightsHelpers
      */
     public function trackPageViewDuration($request)
     {
-        if (!$this->telemetryEnabled()) 
-        {
+        if (!$this->telemetryEnabled()) {
             return;
         }
 
-        if (!$request->session()->has('ms_application_insights_page_info')) 
-        {
-           return;
+        if (!$request->session()->has('ms_application_insights_page_info')) {
+            return;
         }
 
         $properties = $this->getPageViewProperties($request);
         AIServer::trackMessage('browse_duration', $properties);
         $this->flush();
-        
+
     }
 
 
@@ -59,12 +58,10 @@ class AppInsightsHelpers
      */
     public function trackRequest($request, $response)
     {
-        if (!$this->telemetryEnabled())
-        {
+        if (!$this->telemetryEnabled()) {
             return;
         }
-        if (!$this->appInsights->telemetryClient)
-        {
+        if (!$this->appInsights->telemetryClient) {
             return;
         }
         $properties = $this->getRequestProperties($request);
@@ -87,8 +84,7 @@ class AppInsightsHelpers
      */
     public function trackException(Throwable $e)
     {
-        if (!$this->telemetryEnabled()) 
-        {
+        if (!$this->telemetryEnabled()) {
             return;
         }
         AIServer::trackException($e, $this->getRequestPropertiesFromException($e) ?? []);
@@ -102,21 +98,15 @@ class AppInsightsHelpers
     private function flush()
     {
         $queue_seconds = $this->appInsights->getFlushQueueAfterSeconds();
-        if($queue_seconds)
-        {
+        if ($queue_seconds) {
             AIQueue::dispatch(AIServer::getQueue())
-            ->onQueue('appinsights-queue')
-            ->delay(Carbon::now()->addSeconds($queue_seconds));
-        }
-        else
-        {
-            try 
-            {  
-               AIServer::flush();
-            }
-            catch(Exception $e)
-            {
-                Log::debug('Exception: Could not flush AIServer server. Error:'.$e->getMessage());
+                ->onQueue('appinsights-queue')
+                ->delay(Carbon::now()->addSeconds($queue_seconds));
+        } else {
+            try {
+                AIServer::flush();
+            } catch (Exception $e) {
+                Log::debug('Exception: Could not flush AIServer server. Error:' . $e->getMessage());
             }
         }
     }
@@ -130,16 +120,12 @@ class AppInsightsHelpers
      */
     private function getRequestPropertiesFromException(Throwable $e)
     {
-        foreach ($e->getTrace() as $item)
-        {
-            if (isset($item['args']))
-            {
-                foreach ($item['args'] as $arg)
-                {
-                    
-                    /** @disregard Undefined type 'Request' */ 
-                    if ($arg instanceof Request)
-                    {
+        foreach ($e->getTrace() as $item) {
+            if (isset($item['args'])) {
+                foreach ($item['args'] as $arg) {
+
+                    /** @disregard Undefined type 'Request' */
+                    if ($arg instanceof Request) {
                         return $this->getRequestProperties($arg);
                     }
                 }
@@ -156,8 +142,7 @@ class AppInsightsHelpers
      */
     public function flashPageInfo($request)
     {
-        if (!$this->telemetryEnabled())
-        {
+        if (!$this->telemetryEnabled()) {
             return;
         }
 
@@ -197,19 +182,18 @@ class AppInsightsHelpers
             'secure' => $request->secure(),
         ];
 
-        if ($request->route()
-            && $request->route()->getName())
-        {
+        if (
+            $request->route()
+            && $request->route()->getName()
+        ) {
             $properties['route'] = $request->route()->getName();
         }
 
-        if ($request->user())
-        {
+        if ($request->user()) {
             $properties['user'] = $request->user()->id;
         }
 
-        if ($request->server('HTTP_REFERER'))
-        {
+        if ($request->server('HTTP_REFERER')) {
             $properties['referer'] = $request->server('HTTP_REFERER');
         }
 
@@ -229,7 +213,7 @@ class AppInsightsHelpers
     {
         $measurements = [];
 
-        return ( ! empty($measurements)) ? $measurements : null;
+        return (!empty($measurements)) ? $measurements : null;
     }
 
 
@@ -338,13 +322,14 @@ class AppInsightsHelpers
      * If you use stream() or streamDownload() then the response object isn't a standard one. Here we check different
      * places for the status code depending on the object that Laravel sends us.
      *
-     * @param StreamedResponse|Response $response The response object
+     * @param StreamedResponse|BinaryFileResponse|Response $response The response object
      *
      * @return int The HTTP status code
      */
-    private function getResponseCode($response)
+    private function getResponseCode($response): int
     {
-        /** @disregard Undefined type 'StreamedResponse' */ 
-        return $response instanceof StreamedResponse ? $response->getStatusCode() : $response->status();
+        // All Symfony response types (Response, StreamedResponse, BinaryFileResponse) 
+        // inherit from Symfony\Component\HttpFoundation\Response which has getStatusCode()
+        return $response->getStatusCode();
     }
 }
