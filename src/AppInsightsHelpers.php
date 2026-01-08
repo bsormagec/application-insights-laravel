@@ -1,17 +1,17 @@
 <?php
+
 namespace Sormagec\AppInsightsLaravel;
 
-use Carbon\Carbon;
 use Exception;
 use Throwable;
-use GuzzleHttp\Exception\RequestException;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
-use Symfony\Component\HttpFoundation\StreamedResponse;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Sormagec\AppInsightsLaravel\Facades\AppInsightsServerFacade as AIServer;
 use Sormagec\AppInsightsLaravel\Facades\AppInsightsQueueFacade as AIQueue;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AppInsightsHelpers
 {
@@ -64,6 +64,11 @@ class AppInsightsHelpers
         if (!$this->appInsights->telemetryClient) {
             return;
         }
+        
+        // Add Context Tags (IP, User Agent)
+        $this->appInsights->addContextTag('ai.location.ip', $request->ip());
+        $this->appInsights->addContextTag('ai.user.userAgent', $request->userAgent());
+
         $properties = $this->getRequestProperties($request);
         AIServer::trackRequest(
             $properties['route'] ?? 'application',

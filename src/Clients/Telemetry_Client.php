@@ -31,6 +31,13 @@ class Telemetry_Client
      * @var array
      */
     protected $globalProperties = [];
+    
+    /**
+     * Context tags (Correlation ID etc)
+     * 
+     * @var array
+     */
+    protected $contextTags = [];
 
     /**
      * The instrumentation key for the Application Insights service.
@@ -51,6 +58,9 @@ class Telemetry_Client
      */
     public function __construct()
     {
+        // Initialize correlation ID
+        $this->contextTags['ai.operation.id'] = uniqid('req_', true);
+
         // Flush at script end
         register_shutdown_function(function () {
             if (count($this->buffer) > $this->bufferLimit) {
@@ -116,38 +126,35 @@ class Telemetry_Client
             $this->instrumentationKey = $instrumentationKey;
         }
     }
+    
     /**
      * Sets the instrumentation key for the Application Insights service.
      *
      * @param string $instrumentationKey
-     * @throws AppInsightsException
      */
     public function setInstrumentationKey($instrumentationKey)
     {
-        if (empty($instrumentationKey)) {
-            throw new AppInsightsException('Instrumentation key cannot be empty.');
-        }
         $this->instrumentationKey = $instrumentationKey;
     }
 
     /**
-     * Sets global properties that will be included in every telemetry item.
-     *
-     * @param array $properties
+     * Add a context tag to be sent with every payload
+     * @param string $key
+     * @param string $value
      */
-    public function setGlobalProperties(array $properties)
+    public function addContextTag(string $key, string $value)
     {
-        $this->globalProperties = $properties ?? [];
+        $this->contextTags[$key] = $value;
     }
 
     /**
-     * Track a request to the application.
+     * Tracks a Request with the Application Insights service.
      *
-     * @param string $name
-     * @param string $url
-     * @param float $durationMs
-     * @param int $responseCode
-     * @param bool $success
+     * @param string $name The name of the request.
+     * @param string $url The URL of the request.
+     * @param float $durationMs The duration of the request in milliseconds.
+     * @param int $responseCode The HTTP response code.
+     * @param bool $success Whether the request was successful.
      * @param array $properties
      * @param array $measurements
      * @return void
@@ -175,11 +182,12 @@ class Telemetry_Client
             'name' => 'Microsoft.ApplicationInsights.Request',
             'time' => Carbon::now()->toIso8601ZuluString(),
             'iKey' => $this->instrumentationKey,
+            'tags' => $this->contextTags,
             'data' => [
                     'baseType' => 'RequestData',
                     'baseData' => [
-                            'ver' => 1,
-                            'id' => uniqid(),
+                            'ver' => 2,
+                            'id' => $this->contextTags['ai.operation.id'],
                             'name' => $name,
                             'duration' => $this->formatDuration($durationMs),
                             'responseCode' => (string) $responseCode,
@@ -188,6 +196,75 @@ class Telemetry_Client
                             'properties' => $properties,
                         ]
                 ]
+        ];
+
+        $this->sendPayload($payload);
+    }
+    
+    /**
+     * Tracks a PageView with the Application Insights service.
+     * @param string $name The name of the page.
+     * @param string $url The URL of the page.
+     * @param array $properties
+     * @param array $measurements
+     * @return void
+     */
+    public function trackPageView(string $name, string $url, array $properties = [], array $measurements = [])
+    {
+        $properties = $properties ?? [];
+        $properties = array_merge($this->globalProperties, $properties);
+        
+        $payload = [
+            'name' => 'Microsoft.ApplicationInsights.PageView',
+            'time' => Carbon::now()->toIso8601ZuluString(),
+            'iKey' => $this->instrumentationKey,
+            'tags' => $this->contextTags,
+            'data' => [
+                'baseType' => 'PageViewData',
+                'baseData' => [
+                    'ver' => 2,
+                    'name' => $name,
+                    'url' => $url,
+                    'properties' => $properties,
+                    'measurements' => $measurements
+                ]
+            ]
+        ];
+        
+        $this->sendPayload($payload);
+    }
+
+    /**
+     * Tracks a Metric with the Application Insights service.
+     * @param string $name The name of the metric.
+     * @param float $value The value of the metric.
+     * @param array $properties
+     * @return void
+     */
+    public function trackMetric(string $name, float $value, array $properties = [])
+    {
+        $properties = $properties ?? [];
+        $properties = array_merge($this->globalProperties, $properties);
+
+        $payload = [
+            'name' => 'Microsoft.ApplicationInsights.Metric',
+            'time' => Carbon::now()->toIso8601ZuluString(),
+            'iKey' => $this->instrumentationKey,
+            'tags' => $this->contextTags,
+            'data' => [
+                'baseType' => 'MetricData',
+                'baseData' => [
+                    'ver' => 2,
+                    'metrics' => [
+                        [
+                            'name' => $name,
+                            'value' => $value,
+                            'count' => 1
+                        ]
+                    ],
+                    'properties' => $properties
+                ]
+            ]
         ];
 
         $this->sendPayload($payload);
@@ -238,68 +315,39 @@ class Telemetry_Client
             : array_map(function ($frame, $index) {
                 return [
                     'level' => $index,
-                    'method' => ($frame['class'] ?? '') . ($frame['type'] ?? '') . ($frame['function'] ?? ''),
-                    'assembly' => $frame['class'] ?? '',
-                    'fileName' => $frame['file'] ?? null,
-                    'line' => $frame['line'] ?? null,
+                    'method' => ($frame['class'] ?? '') . ($frame['type'] ?? '') . $frame['function'],
+                    'assembly' => 'App', // Optionally extract assembly name
+                    'fileName' => $frame['file'] ?? '',
+                    'line' => $frame['line'] ?? 0
                 ];
-            }, $exception->getTrace(), array_keys($exception->getTrace()));
+            }, $exception->getTrace());
 
         $payload = [
             'name' => 'Microsoft.ApplicationInsights.Exception',
             'time' => Carbon::now()->toIso8601ZuluString(),
             'iKey' => $this->instrumentationKey,
+            'tags' => $this->contextTags,
             'data' => [
-                    'baseType' => 'ExceptionData',
-                    'baseData' => [
-                            'ver' => 2,
-                            'exceptions' => [
-                                    [
-                                        'typeName' => get_class($exception),
-                                        'message' => $exception->getMessage(),
-                                        'hasFullStack' => true,
-                                        'parsedStack' => $trace,
-                                    ]
-                                ],
-                            'severityLevel' => 3, // 0=Verbose, 1=Info, 2=Warning, 3=Error, 4=Critical
-                            'properties' => $properties
+                'baseType' => 'ExceptionData',
+                'baseData' => [
+                    'ver' => 2,
+                    'exceptions' => [
+                        [
+                            'id' => 1,
+                            'outerId' => 0,
+                            'typeName' => get_class($exception),
+                            'message' => $exception->getMessage(),
+                            'hasFullStack' => true,
+                            'stack' => json_encode($trace),
+                            'parsedStack' => $trace
                         ]
+                    ],
+                    'properties' => $properties
                 ]
+            ]
         ];
 
         $this->sendPayload($payload);
-    }
-    /**
-     * Gets request properties from the request object.
-     *
-     * @param \Illuminate\Http\Request $request
-     * @return array
-     */
-    protected function getRequestProperties($request)
-    {
-        return [
-            'method' => $request->method(),
-            'url' => $request->fullUrl(),
-            'ip' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-            'session_id' => $request->session()->getId(),
-            'user_id' => $request->user()?->id,
-            'route_name' => $request->route() ? $request->route()->getName() : null,
-        ];
-    }
-
-    /**
-     * Tracks a custom event sent from the client side.
-     *
-     * @param array $data
-     * @return void
-     */
-    public function trackEventFromArray(array $data)
-    {
-        $name = $data['name'] ?? 'unknown_event';
-        $properties = $data['properties'] ?? [];
-
-        $this->trackEvent($name, $properties);
     }
 
     /**
@@ -316,6 +364,7 @@ class Telemetry_Client
             'name' => 'Microsoft.ApplicationInsights.Event',
             'time' => Carbon::now()->toIso8601ZuluString(),
             'iKey' => $this->instrumentationKey,
+            'tags' => $this->contextTags,
             'data' => [
                 'baseType' => 'EventData',
                 'baseData' => [
@@ -355,6 +404,7 @@ class Telemetry_Client
             'name' => 'Microsoft.ApplicationInsights.Message',
             'time' => Carbon::now()->toIso8601ZuluString(),
             'iKey' => $this->instrumentationKey,
+            'tags' => $this->contextTags,
             'data' => [
                 'baseType' => 'MessageData',
                 'baseData' => [
@@ -388,6 +438,7 @@ class Telemetry_Client
             'name' => 'Microsoft.ApplicationInsights.RemoteDependency',
             'time' => Carbon::now()->toIso8601ZuluString(),
             'iKey' => $this->instrumentationKey,
+            'tags' => $this->contextTags,
             'data' => [
                 'baseType' => 'RemoteDependencyData',
                 'baseData' => [
@@ -426,6 +477,7 @@ class Telemetry_Client
             'name' => 'Microsoft.ApplicationInsights.RemoteDependency',
             'time' => Carbon::now()->toIso8601ZuluString(),
             'iKey' => $this->instrumentationKey,
+            'tags' => $this->contextTags,
             'data' => [
                 'baseType' => 'RemoteDependencyData',
                 'baseData' => [

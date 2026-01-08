@@ -38,6 +38,10 @@ class AppInsightsController extends Controller
 
             /** @var AppInsightsServer $server */
             $server = app('AppInsightsServer');
+            
+            // Add Client IP and UA to context
+            $server->addContextTag('ai.location.ip', $request->ip());
+            $server->addContextTag('ai.user.userAgent', $request->userAgent());
 
             // Support batching: if multiple telemetry items are sent at once
             $items = isset($payload[0]) && is_array($payload) ? $payload : [$payload];
@@ -65,17 +69,27 @@ class AppInsightsController extends Controller
                             ]
                         ),
                     ]);
-                    $this->flush();
                 } elseif ($type === 'event') {
-                    $server->trackEventFromArray([
-                        'name' => is_string($item['name']) ? $item['name'] : json_encode($item['name']) ?? '',
-                        'properties' => $item['properties'] ?? []
-                    ]);
-                    $this->flush();
+                    $server->trackEvent($item['name'], $item['properties'] ?? []);
+                } elseif ($type === 'pageView') {
+                    $server->trackPageView(
+                        $item['name'] ?? 'Unknown Page', 
+                        $item['url'] ?? '', 
+                        $item['properties'] ?? [],
+                        $item['measurements'] ?? []
+                    );
+                } elseif ($type === 'metric') {
+                    $server->trackMetric(
+                        $item['name'] ?? 'Unknown Metric', 
+                        (float)($item['value'] ?? 0), 
+                        $item['properties'] ?? []
+                    );
                 } else {
                     Logger::warning('Unknown telemetry type received', ['payload' => $item]);
                 }
             }
+            
+            $this->flush();
 
             return response()->json(['status' => 'ok']);
         } catch (\Throwable $e) {
