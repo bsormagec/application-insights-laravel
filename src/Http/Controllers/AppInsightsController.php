@@ -56,6 +56,7 @@ class AppInsightsController extends Controller
                         'message'    => $item['error']['message'] ?? 'Unknown JS error',
                         'stack'      => $item['error']['stack'] ?? null,
                         'properties' => array_merge(
+                            $item['properties'] ?? [],
                             $item['error']['properties'] ?? [],
                             [
                                 'filename' => $item['error']['filename'] ?? null,
