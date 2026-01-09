@@ -148,6 +148,42 @@ class Telemetry_Client
     }
 
     /**
+     * Get the current operation ID (correlation ID)
+     * @return string|null
+     */
+    public function getOperationId(): ?string
+    {
+        return $this->contextTags['ai.operation.id'] ?? null;
+    }
+
+    /**
+     * Get the parent operation ID
+     * @return string|null
+     */
+    public function getParentId(): ?string
+    {
+        return $this->contextTags['ai.operation.parentId'] ?? null;
+    }
+
+    /**
+     * Set the parent operation ID for correlation
+     * @param string $parentId
+     */
+    public function setParentId(string $parentId): void
+    {
+        $this->contextTags['ai.operation.parentId'] = $parentId;
+    }
+
+    /**
+     * Generate a new span/request ID for child operations
+     * @return string
+     */
+    public function generateSpanId(): string
+    {
+        return bin2hex(random_bytes(8));
+    }
+
+    /**
      * Tracks a Request with the Application Insights service.
      *
      * @param string $name The name of the request.

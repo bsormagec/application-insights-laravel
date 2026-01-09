@@ -55,6 +55,15 @@ class AppInsightsController extends Controller
             foreach ($items as $item) {
                 $type = $item['type'] ?? null;
 
+                // Forward operation context from client for correlation
+                $properties = $item['properties'] ?? [];
+                if (!empty($properties['operationId'])) {
+                    $server->addContextTag('ai.operation.id', $properties['operationId']);
+                }
+                if (!empty($properties['parentId'])) {
+                    $server->addContextTag('ai.operation.parentId', $properties['parentId']);
+                }
+
                 if ($type === 'exception') {
                     $server->trackExceptionFromArray([
                         'message' => $item['error']['message'] ?? 'Unknown JS error',

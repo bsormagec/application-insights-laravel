@@ -44,6 +44,8 @@
         retryLimit: 3,
         retryDelay: 1000,
         collectEndpoint: window.AppInsightsConfig?.collectEndpoint || "/appinsights/collect",
+        operationId: window.AppInsightsConfig?.operationId || generateId(),
+        parentId: window.AppInsightsConfig?.parentId || null,
         pageViewSent: false,
         userId: getUserId(),
         sessionId: getSessionId(),
@@ -57,7 +59,9 @@
                 sessionId: this.sessionId,
                 sessionDuration: getSessionDuration(),
                 url: window.location.href,
-                referrer: document.referrer || null
+                referrer: document.referrer || null,
+                operationId: this.operationId,
+                parentId: this.parentId
             };
         },
 
