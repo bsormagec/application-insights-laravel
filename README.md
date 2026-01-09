@@ -18,7 +18,7 @@ A fully maintained Laravel package for Microsoft Azure Application Insights inte
 - ✅ **Custom Events** - Track custom events and metrics
 - ✅ **Trace Logging** - Send log messages to Application Insights
 - ✅ **Queue Support** - Async telemetry via Laravel queues (Redis, etc.)
-- ✅ **Client-Side JS** - Browser telemetry collection
+- ✅ **Client-Side JS** - Browser telemetry collection (PageView, BrowserTimings, errors)
 - ✅ **Laravel 10+** - Full support for modern Laravel versions
 
 ## Requirements
@@ -132,6 +132,15 @@ Add to your Blade layout (preferably in `<head>`):
 {!! \AIClient::javascript() !!}
 ```
 
+This automatically tracks:
+- **Page Views** - Every page load with URL and title
+- **Browser Timings** - Page load time, DOM processing, network latency, server response time
+- **JavaScript Errors** - Uncaught exceptions and unhandled promise rejections
+- **User Sessions** - Anonymous user ID and session tracking
+- **AJAX/Fetch Requests** - All XHR and Fetch calls with duration and status
+- **Web Vitals** - LCP, FID, CLS, FCP, FP, INP (Core Web Vitals)
+- **Long Tasks** - JavaScript tasks taking 50ms+
+
 ### Custom Telemetry
 
 ```php
@@ -223,6 +232,16 @@ php artisan vendor:publish --tag=laravel-assets
 ```
 
 ## Changelog
+
+### v2.2.0
+- ✨ Added slow request tracking threshold (`MS_AI_REQUEST_SLOW_MS`)
+- ✨ Added automatic PageView tracking for Browser tab in Azure
+- ✨ Added BrowserTimings (page load performance) tracking
+- ✨ Added User Session tracking (anonymous user ID, session ID)
+- ✨ Added AJAX/Fetch request tracking as dependencies
+- ✨ Added Web Vitals: LCP, FID, CLS, FCP, FP, INP
+- ✨ Added Long Tasks tracking (50ms+ JavaScript tasks)
+- 📝 Completely rewritten client-side JavaScript SDK
 
 ### v2.1.0
 - ✨ Added slow database query tracking

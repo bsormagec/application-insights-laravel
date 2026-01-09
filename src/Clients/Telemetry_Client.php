@@ -31,7 +31,7 @@ class Telemetry_Client
      * @var array
      */
     protected $globalProperties = [];
-    
+
     /**
      * Context tags (Correlation ID etc)
      * 
@@ -126,7 +126,7 @@ class Telemetry_Client
             $this->instrumentationKey = $instrumentationKey;
         }
     }
-    
+
     /**
      * Sets the instrumentation key for the Application Insights service.
      *
@@ -163,8 +163,8 @@ class Telemetry_Client
     {
         $urlParts = parse_url($url);
         $baseUrl = ($urlParts['scheme'] ?? '') . '://' .
-        ($urlParts['host'] ?? '') .
-        ($urlParts['path'] ?? '');
+            ($urlParts['host'] ?? '') .
+            ($urlParts['path'] ?? '');
         // Query parameters (array)
         $queryParams = [];
         if (!empty($urlParts['query'])) {
@@ -184,23 +184,23 @@ class Telemetry_Client
             'iKey' => $this->instrumentationKey,
             'tags' => $this->contextTags,
             'data' => [
-                    'baseType' => 'RequestData',
-                    'baseData' => [
-                            'ver' => 2,
-                            'id' => $this->contextTags['ai.operation.id'],
-                            'name' => $name,
-                            'duration' => $this->formatDuration($durationMs),
-                            'responseCode' => (string) $responseCode,
-                            'success' => $success,
-                            'url' => $baseUrl,
-                            'properties' => $properties,
-                        ]
+                'baseType' => 'RequestData',
+                'baseData' => [
+                    'ver' => 2,
+                    'id' => $this->contextTags['ai.operation.id'],
+                    'name' => $name,
+                    'duration' => $this->formatDuration($durationMs),
+                    'responseCode' => (string) $responseCode,
+                    'success' => $success,
+                    'url' => $baseUrl,
+                    'properties' => $properties,
                 ]
+            ]
         ];
 
         $this->sendPayload($payload);
     }
-    
+
     /**
      * Tracks a PageView with the Application Insights service.
      * @param string $name The name of the page.
@@ -213,7 +213,7 @@ class Telemetry_Client
     {
         $properties = $properties ?? [];
         $properties = array_merge($this->globalProperties, $properties);
-        
+
         $payload = [
             'name' => 'Microsoft.ApplicationInsights.PageView',
             'time' => Carbon::now()->toIso8601ZuluString(),
@@ -230,7 +230,7 @@ class Telemetry_Client
                 ]
             ]
         ];
-        
+
         $this->sendPayload($payload);
     }
 
@@ -266,6 +266,60 @@ class Telemetry_Client
                 ]
             ]
         ];
+
+        $this->sendPayload($payload);
+    }
+
+    /**
+     * Tracks browser timings (page load performance) with the Application Insights service.
+     * This sends PageViewPerformanceData which appears in the Browser tab in Azure.
+     * 
+     * @param string $name The name of the page.
+     * @param string $url The URL of the page.
+     * @param array $measurements Performance measurements from Navigation Timing API.
+     * @param array $properties Additional properties.
+     * @return void
+     */
+    public function trackBrowserTimings(string $name, string $url, array $measurements = [], array $properties = [])
+    {
+        $properties = array_merge($this->globalProperties ?? [], $properties);
+
+        $duration = isset($measurements['pageLoadTime'])
+            ? $this->formatDuration((float) $measurements['pageLoadTime'])
+            : '00:00:00.000';
+
+        $payload = [
+            'name' => 'Microsoft.ApplicationInsights.PageViewPerformance',
+            'time' => Carbon::now()->toIso8601ZuluString(),
+            'iKey' => $this->instrumentationKey,
+            'tags' => $this->contextTags,
+            'data' => [
+                'baseType' => 'PageViewPerformanceData',
+                'baseData' => [
+                    'ver' => 2,
+                    'name' => $name,
+                    'url' => $url,
+                    'duration' => $duration,
+                    'perfTotal' => $duration,
+                    'networkConnect' => isset($measurements['tcpConnectTime'])
+                        ? $this->formatDuration((float) $measurements['tcpConnectTime'])
+                        : null,
+                    'sentRequest' => isset($measurements['networkLatency'])
+                        ? $this->formatDuration((float) $measurements['networkLatency'])
+                        : null,
+                    'receivedResponse' => isset($measurements['serverResponseTime'])
+                        ? $this->formatDuration((float) $measurements['serverResponseTime'])
+                        : null,
+                    'domProcessing' => isset($measurements['domProcessingTime'])
+                        ? $this->formatDuration((float) $measurements['domProcessingTime'])
+                        : null,
+                    'properties' => $properties,
+                    'measurements' => $measurements
+                ]
+            ]
+        ];
+
+        $payload['data']['baseData'] = array_filter($payload['data']['baseData'], fn($v) => $v !== null);
 
         $this->sendPayload($payload);
     }

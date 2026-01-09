@@ -38,7 +38,7 @@ class AppInsightsController extends Controller
 
             /** @var AppInsightsServer $server */
             $server = app('AppInsightsServer');
-            
+
             // Add Client IP and UA to context
             $server->addContextTag('ai.location.ip', $request->ip());
             $server->addContextTag('ai.user.userAgent', $request->userAgent());
@@ -57,15 +57,15 @@ class AppInsightsController extends Controller
 
                 if ($type === 'exception') {
                     $server->trackExceptionFromArray([
-                        'message'    => $item['error']['message'] ?? 'Unknown JS error',
-                        'stack'      => $item['error']['stack'] ?? null,
+                        'message' => $item['error']['message'] ?? 'Unknown JS error',
+                        'stack' => $item['error']['stack'] ?? null,
                         'properties' => array_merge(
                             $item['properties'] ?? [],
                             $item['error']['properties'] ?? [],
                             [
                                 'filename' => $item['error']['filename'] ?? null,
-                                'lineno'   => $item['error']['lineno'] ?? null,
-                                'colno'    => $item['error']['colno'] ?? null,
+                                'lineno' => $item['error']['lineno'] ?? null,
+                                'colno' => $item['error']['colno'] ?? null,
                             ]
                         ),
                     ]);
@@ -73,22 +73,41 @@ class AppInsightsController extends Controller
                     $server->trackEvent($item['name'], $item['properties'] ?? []);
                 } elseif ($type === 'pageView') {
                     $server->trackPageView(
-                        $item['name'] ?? 'Unknown Page', 
-                        $item['url'] ?? '', 
+                        $item['name'] ?? 'Unknown Page',
+                        $item['url'] ?? '',
                         $item['properties'] ?? [],
                         $item['measurements'] ?? []
                     );
                 } elseif ($type === 'metric') {
                     $server->trackMetric(
-                        $item['name'] ?? 'Unknown Metric', 
-                        (float)($item['value'] ?? 0), 
+                        $item['name'] ?? 'Unknown Metric',
+                        (float) ($item['value'] ?? 0),
                         $item['properties'] ?? []
+                    );
+                } elseif ($type === 'browserTimings') {
+                    $server->trackBrowserTimings(
+                        $item['name'] ?? 'Page View',
+                        $item['url'] ?? '',
+                        $item['measurements'] ?? [],
+                        $item['properties'] ?? []
+                    );
+                } elseif ($type === 'dependency') {
+                    $server->trackDependency(
+                        'HTTP',
+                        parse_url($item['url'] ?? '', PHP_URL_HOST) ?: 'unknown',
+                        $item['name'] ?? 'HTTP Request',
+                        (float) ($item['duration'] ?? 0),
+                        $item['success'] ?? true,
+                        array_merge($item['properties'] ?? [], [
+                            'responseCode' => $item['responseCode'] ?? 0,
+                            'url' => $item['url'] ?? ''
+                        ])
                     );
                 } else {
                     Logger::warning('Unknown telemetry type received', ['payload' => $item]);
                 }
             }
-            
+
             $this->flush();
 
             return response()->json(['status' => 'ok']);
@@ -102,23 +121,17 @@ class AppInsightsController extends Controller
     {
         $server = app('AppInsightsServer');
         $queue_seconds = $server->getFlushQueueAfterSeconds();
-        if($queue_seconds)
-        {
+        if ($queue_seconds) {
             /** @disregard Undefined type 'AIServer' */
             \AIQueue::dispatch(\AIServer::getQueue())
-            ->onQueue('appinsights-queue')
-            ->delay(Carbon::now()->addSeconds($queue_seconds));
-        }
-        else
-        {
-            try 
-            {  
+                ->onQueue('appinsights-queue')
+                ->delay(Carbon::now()->addSeconds($queue_seconds));
+        } else {
+            try {
                 /** @disregard Undefined type 'AIServer' */
-               \AIServer::flush();
-            }
-            catch(\Exception $e)
-            {
-                Logger::debug('Exception: Could not flush AIServer server. Error:'.$e->getMessage());
+                \AIServer::flush();
+            } catch (\Exception $e) {
+                Logger::debug('Exception: Could not flush AIServer server. Error:' . $e->getMessage());
             }
         }
     }
