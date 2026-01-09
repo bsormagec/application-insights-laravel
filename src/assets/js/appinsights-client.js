@@ -46,9 +46,46 @@
         collectEndpoint: window.AppInsightsConfig?.collectEndpoint || "/appinsights/collect",
         operationId: window.AppInsightsConfig?.operationId || generateId(),
         parentId: window.AppInsightsConfig?.parentId || null,
+        excludedPaths: window.AppInsightsConfig?.excludedPaths || [],
         pageViewSent: false,
         userId: getUserId(),
         sessionId: getSessionId(),
+
+        /**
+         * Check if a URL path should be excluded from tracking
+         */
+        isPathExcluded: function (url) {
+            if (!this.excludedPaths || this.excludedPaths.length === 0) return false;
+
+            try {
+                var urlObj = new URL(url, window.location.origin);
+                var path = urlObj.pathname.replace(/^\//, ''); // Remove leading slash
+
+                for (var i = 0; i < this.excludedPaths.length; i++) {
+                    var pattern = this.excludedPaths[i];
+                    if (this.pathMatchesPattern(path, pattern)) {
+                        return true;
+                    }
+                }
+            } catch (e) {
+                // If URL parsing fails, don't exclude
+            }
+            return false;
+        },
+
+        /**
+         * Check if path matches pattern (supports * wildcard)
+         */
+        pathMatchesPattern: function (path, pattern) {
+            if (path === pattern) return true;
+
+            // Convert wildcard pattern to regex
+            var regex = pattern
+                .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Escape special chars
+                .replace(/\\\*/g, '.*'); // Replace escaped \* with .*
+            regex = new RegExp('^' + regex + '$');
+            return regex.test(path);
+        },
 
         /**
          * Get context to attach to all telemetry
@@ -278,8 +315,8 @@
                 var duration = performance.now() - xhr._aiStartTime;
                 var success = xhr.status >= 200 && xhr.status < 400;
 
-                // Skip tracking our own telemetry endpoint
-                if (xhr._aiUrl && xhr._aiUrl.indexOf('/appinsights/collect') === -1) {
+                // Skip tracking our own telemetry endpoint and excluded paths
+                if (xhr._aiUrl && xhr._aiUrl.indexOf('/appinsights/collect') === -1 && !ai.isPathExcluded(xhr._aiUrl)) {
                     ai.trackDependency(
                         xhr._aiMethod + ' ' + xhr._aiUrl,
                         xhr._aiUrl,
@@ -305,8 +342,8 @@
                 var duration = performance.now() - startTime;
                 var success = response.ok;
 
-                // Skip tracking our own telemetry endpoint
-                if (url.indexOf('/appinsights/collect') === -1) {
+                // Skip tracking our own telemetry endpoint and excluded paths
+                if (url.indexOf('/appinsights/collect') === -1 && !ai.isPathExcluded(url)) {
                     ai.trackDependency(
                         method + ' ' + url,
                         url,
@@ -320,7 +357,7 @@
             }).catch(function (error) {
                 var duration = performance.now() - startTime;
 
-                if (url.indexOf('/appinsights/collect') === -1) {
+                if (url.indexOf('/appinsights/collect') === -1 && !ai.isPathExcluded(url)) {
                     ai.trackDependency(
                         method + ' ' + url,
                         url,

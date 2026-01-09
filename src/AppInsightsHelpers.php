@@ -9,12 +9,15 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Sormagec\AppInsightsLaravel\Facades\AppInsightsServerFacade as AIServer;
 use Sormagec\AppInsightsLaravel\Facades\AppInsightsQueueFacade as AIQueue;
+use Sormagec\AppInsightsLaravel\Support\Config;
+use Sormagec\AppInsightsLaravel\Support\PathExclusionTrait;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AppInsightsHelpers
 {
+    use PathExclusionTrait;
 
     /**
      * @var AppInsightsServer
@@ -36,6 +39,11 @@ class AppInsightsHelpers
     public function trackPageViewDuration($request)
     {
         if (!$this->telemetryEnabled()) {
+            return;
+        }
+
+        // Skip excluded paths
+        if ($this->shouldExcludeRequest($request)) {
             return;
         }
 
@@ -64,7 +72,12 @@ class AppInsightsHelpers
         if (!$this->appInsights->telemetryClient) {
             return;
         }
-        
+
+        // Skip excluded paths
+        if ($this->shouldExcludeRequest($request)) {
+            return;
+        }
+
         // Add Context Tags (IP, User Agent)
         $this->appInsights->addContextTag('ai.location.ip', $request->ip());
         $this->appInsights->addContextTag('ai.user.userAgent', $request->userAgent());
@@ -148,6 +161,11 @@ class AppInsightsHelpers
     public function flashPageInfo($request)
     {
         if (!$this->telemetryEnabled()) {
+            return;
+        }
+
+        // Skip excluded paths
+        if ($this->shouldExcludeRequest($request)) {
             return;
         }
 

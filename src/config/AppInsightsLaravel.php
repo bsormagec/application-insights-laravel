@@ -80,15 +80,37 @@ return [
     'features' => [
         // Track slow database queries
         'db' => env('MS_AI_FEATURE_DB', true),
-        
+
         // Track failed queue jobs
         'jobs' => env('MS_AI_FEATURE_JOBS', true),
-        
+
         // Track sent emails
         'mail' => env('MS_AI_FEATURE_MAIL', true),
-        
+
         // Track HTTP requests (via middleware)
         'http' => env('MS_AI_FEATURE_HTTP', true),
+    ],
+
+    /*
+     * Excluded Paths
+     * ===============
+     *
+     * List of URL path patterns to exclude from request tracking.
+     * Supports wildcards (*) for pattern matching.
+     * Useful for excluding health checks, Horizon API, Telescope, etc.
+     * 
+     * Examples:
+     *   'horizon/*'     - Excludes all Horizon routes
+     *   'health'        - Excludes exact /health path
+     *   'api/v1/ping'   - Excludes exact path
+     */
+    'excluded_paths' => [
+        'horizon/*',
+        'telescope/*',
+        'livewire/*',
+        '_debugbar/*',
+        'appinsights/*',
+        'sanctum/*',
     ],
 
 ];

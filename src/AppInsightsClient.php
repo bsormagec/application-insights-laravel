@@ -29,13 +29,17 @@ class AppInsightsClient extends InstrumentationKey
         } catch (\Throwable $e) {
             // Silently fail if server not available
         }
+        // Get excluded paths for client-side filtering
+        $excludedPaths = config('appinsights-laravel.excluded_paths', []);
+        $excludedPathsJson = json_encode($excludedPaths);
 
         return <<<HTML
     <script>
         window.AppInsightsConfig = {
             collectEndpoint: "{$endpoint}",
             operationId: "{$operationId}",
-            parentId: "{$parentId}"
+            parentId: "{$parentId}",
+            excludedPaths: {$excludedPathsJson}
         };
     </script>
     <script src="{$jsAsset}"></script>
