@@ -1,4 +1,5 @@
 <?php
+
 namespace Sormagec\AppInsightsLaravel\Queue;
 
 use Illuminate\Bus\Queueable;
@@ -6,8 +7,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use GuzzleHttp\Exception\RequestException;
-use Exception;
 use Illuminate\Support\Facades\Log;
 use Sormagec\AppInsightsLaravel\Facades\AppInsightsServerFacade as AIServer;
 
@@ -16,34 +15,111 @@ class AppInsightsTelemetryQueue implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /**
-     * Create a new job instance.
-     *
-     * @return void
+     * The telemetry items to process
      */
-    protected $data;
+    protected array $items;
 
-    public function __construct($data = [])
-    {
-        $this->data = $data;
-    }
     /**
-     * Execute the job.
-     *
-     * @return void
+     * Create a new job instance.
      */
-    public function handle()
+    public function __construct(array $items = [])
     {
-        if (empty($this->data)) {
+        $this->items = $items;
+    }
+
+    /**
+     * Execute the job - process telemetry items and send to Azure.
+     */
+    public function handle(): void
+    {
+        if (empty($this->items)) {
             return;
         }
+
         try {
-            AIServer::setQueue($this->data);
-        } catch (RequestException $e) {
-            Log::debug('RequestException: Could not flush AIServer server. Error:' . $e->getMessage());
-            Log::debug('Queue: ' . json_encode($this->data));
-        } catch (Exception $e) {
-            Log::debug('Exception: Could not flush AIServer server. Error:' . $e->getMessage());
-            Log::debug('Queue: ' . json_encode($this->data));
+            foreach ($this->items as $item) {
+                $this->processItem($item);
+            }
+
+            // Flush all buffered telemetry to Azure
+            AIServer::flush();
+        } catch (\Throwable $e) {
+            Log::error('AppInsights queue job failed: ' . $e->getMessage(), [
+                'exception' => $e,
+                'items_count' => count($this->items),
+            ]);
         }
+    }
+
+    /**
+     * Process a single telemetry item
+     */
+    protected function processItem(array $item): void
+    {
+        $type = $item['type'] ?? null;
+        $context = $item['_context'] ?? [];
+
+        // Add context tags
+        if (!empty($context['client_ip'])) {
+            AIServer::addContextTag('ai.location.ip', $context['client_ip']);
+        }
+        if (!empty($context['user_agent'])) {
+            AIServer::addContextTag('ai.user.userAgent', $context['user_agent']);
+        }
+
+        // Forward operation context from client for correlation
+        $properties = $item['properties'] ?? [];
+        if (!empty($properties['operationId'])) {
+            AIServer::addContextTag('ai.operation.id', $properties['operationId']);
+        }
+        if (!empty($properties['parentId'])) {
+            AIServer::addContextTag('ai.operation.parentId', $properties['parentId']);
+        }
+
+        match ($type) {
+            'exception' => AIServer::trackExceptionFromArray([
+                'message' => $item['error']['message'] ?? 'Unknown JS error',
+                'stack' => $item['error']['stack'] ?? null,
+                'properties' => array_merge(
+                    $item['properties'] ?? [],
+                    $item['error']['properties'] ?? [],
+                    [
+                        'filename' => $item['error']['filename'] ?? null,
+                        'lineno' => $item['error']['lineno'] ?? null,
+                        'colno' => $item['error']['colno'] ?? null,
+                    ]
+                ),
+            ]),
+            'event' => AIServer::trackEvent($item['name'], $item['properties'] ?? []),
+            'pageView' => AIServer::trackPageView(
+                $item['name'] ?? 'Unknown Page',
+                $item['url'] ?? '',
+                $item['properties'] ?? [],
+                $item['measurements'] ?? []
+            ),
+            'metric' => AIServer::trackMetric(
+                $item['name'] ?? 'Unknown Metric',
+                (float) ($item['value'] ?? 0),
+                $item['properties'] ?? []
+            ),
+            'browserTimings' => AIServer::trackBrowserTimings(
+                $item['name'] ?? 'Page View',
+                $item['url'] ?? '',
+                $item['measurements'] ?? [],
+                $item['properties'] ?? []
+            ),
+            'dependency' => AIServer::trackDependency(
+                'HTTP',
+                parse_url($item['url'] ?? '', PHP_URL_HOST) ?: 'unknown',
+                $item['name'] ?? 'HTTP Request',
+                (float) ($item['duration'] ?? 0),
+                $item['success'] ?? true,
+                array_merge($item['properties'] ?? [], [
+                    'responseCode' => $item['responseCode'] ?? 0,
+                    'url' => $item['url'] ?? ''
+                ])
+            ),
+            default => Log::warning('Unknown telemetry type in queue', ['type' => $type]),
+        };
     }
 }

@@ -7,7 +7,6 @@ use Sormagec\AppInsightsLaravel\Support\Config;
 use Sormagec\AppInsightsLaravel\Support\Logger;
 use Illuminate\Support\Facades\Http;
 use GuzzleHttp\Client;
-use GuzzleHttp\Promise\Utils;
 
 class Telemetry_Client
 {
@@ -656,7 +655,7 @@ class Telemetry_Client
 
     /**
      * Send telemetry data asynchronously (fire-and-forget)
-     * This prevents blocking the main request while waiting for Azure response
+     * Uses ultra-low timeout to avoid blocking the main request
      *
      * @param string $url
      * @param string $payload
@@ -666,45 +665,44 @@ class Telemetry_Client
     protected function sendAsync(string $url, string $payload, bool $enableLocalLogging = false): void
     {
         try {
-            $client = new Client([
-                'timeout' => 5,         // Max 5 seconds total
-                'connect_timeout' => 2, // Max 2 seconds to connect
-            ]);
-
-            $promise = $client->postAsync($url, [
-                'headers' => [
-                    'Content-Type' => 'application/x-ndjson',
-                ],
-                'body' => $payload,
-                'query' => [
-                    'iKey' => $this->instrumentationKey,
-                ],
-            ]);
-
-            // Fire-and-forget: Don't wait for response in web requests
-            // For CLI/queue contexts, we can optionally wait
+            // For CLI/queue contexts, use normal timeout
             if ($this->shouldWaitForResponse()) {
-                $response = $promise->wait();
+                $client = new Client([
+                    'timeout' => 10,
+                    'connect_timeout' => 5,
+                ]);
+
+                $response = $client->post($url, [
+                    'headers' => ['Content-Type' => 'application/x-ndjson'],
+                    'body' => $payload,
+                    'query' => ['iKey' => $this->instrumentationKey],
+                ]);
+
                 if ($enableLocalLogging && function_exists('logger')) {
                     Logger::debug('Raw AppInsights response', ['body' => $response->getBody()->getContents()]);
                 }
-            } else {
-                // Register promise to be resolved later (non-blocking)
-                $promise->then(
-                    function ($response) use ($enableLocalLogging) {
-                        if ($enableLocalLogging && function_exists('logger')) {
-                            Logger::debug('Raw AppInsights async response', ['status' => $response->getStatusCode()]);
-                        }
-                    },
-                    function ($exception) {
-                        if (function_exists('logger')) {
-                            Logger::warning('AppInsights async request failed', ['error' => $exception->getMessage()]);
-                        }
-                    }
-                );
+                return;
+            }
 
-                // Trigger the async request without blocking
-                Utils::queue()->run();
+            // For web requests: Fire-and-forget with minimal timeout
+            // The request will be sent but we won't wait for response
+            $client = new Client([
+                'timeout' => 0.1,        // 100ms max - just enough to send
+                'connect_timeout' => 0.1, // 100ms to connect
+                'http_errors' => false,   // Don't throw on HTTP errors
+            ]);
+
+            try {
+                $client->post($url, [
+                    'headers' => ['Content-Type' => 'application/x-ndjson'],
+                    'body' => $payload,
+                    'query' => ['iKey' => $this->instrumentationKey],
+                ]);
+            } catch (\GuzzleHttp\Exception\ConnectException $e) {
+                // Timeout expected - request was sent, we just didn't wait for response
+                if ($enableLocalLogging) {
+                    Logger::debug('AppInsights fire-and-forget sent (timeout expected)');
+                }
             }
         } catch (\Throwable $e) {
             if (function_exists('logger')) {
