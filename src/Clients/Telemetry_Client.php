@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Log;
 use Sormagec\AppInsightsLaravel\Support\Config;
 use Sormagec\AppInsightsLaravel\Support\Logger;
 use Illuminate\Support\Facades\Http;
+use GuzzleHttp\Client;
+use GuzzleHttp\Promise\Utils;
 
 class Telemetry_Client
 {
@@ -61,9 +63,9 @@ class Telemetry_Client
         // Initialize correlation ID
         $this->contextTags['ai.operation.id'] = uniqid('req_', true);
 
-        // Flush at script end
+        // Flush at script end - send any remaining items in buffer
         register_shutdown_function(function () {
-            if (count($this->buffer) > $this->bufferLimit) {
+            if (count($this->buffer) > 0) {
                 $this->flush();
             }
         });
@@ -400,17 +402,18 @@ class Telemetry_Client
     {
         $properties = $properties ?? [];
         $properties = array_merge($this->globalProperties ?? [], $properties);
+        $stackTrace = $exception->getTrace();
         $trace = $overrideStack
             ? [['level' => 0, 'method' => 'JS', 'assembly' => 'JS', 'stack' => $overrideStack]]
             : array_map(function ($frame, $index) {
                 return [
                     'level' => $index,
-                    'method' => ($frame['class'] ?? '') . ($frame['type'] ?? '') . $frame['function'],
-                    'assembly' => 'App', // Optionally extract assembly name
+                    'method' => ($frame['class'] ?? '') . ($frame['type'] ?? '') . ($frame['function'] ?? ''),
+                    'assembly' => 'App',
                     'fileName' => $frame['file'] ?? '',
                     'line' => $frame['line'] ?? 0
                 ];
-            }, $exception->getTrace());
+            }, $stackTrace, array_keys($stackTrace));
 
         $payload = [
             'name' => 'Microsoft.ApplicationInsights.Exception',
@@ -623,29 +626,24 @@ class Telemetry_Client
                 Logger::error('AppInsights flush failed: ' . $e->getMessage());
             }
         }
-        if (empty($this->buffer) && $enableLocalLogging) {
-            Logger::debug('empty buffer response', ['body' => 'No data to send']);
+
+        if (empty($this->buffer)) {
+            if ($enableLocalLogging) {
+                Logger::debug('empty buffer response', ['body' => 'No data to send']);
+            }
             return;
         }
 
         try {
-
             if ($enableLocalLogging) {
                 $this->logPayloadBeforeFlush();
             }
 
-            $response = Http::withHeaders([
-                'Content-Type' => 'application/x-ndjson',
-            ])->withBody(
-                    $this->formatBatchPayload(),
-                    'application/x-ndjson'
-                )->post($this->baseUrl . '/v2/track', [
-                        'iKey' => $this->instrumentationKey,
-                    ]);
+            $payload = $this->formatBatchPayload();
+            $url = $this->baseUrl . '/v2/track';
 
-            if ($enableLocalLogging && function_exists('logger')) {
-                Logger::debug('Raw AppInsights response', ['body' => $response->body()]);
-            }
+            // Use async HTTP to avoid blocking the main thread
+            $this->sendAsync($url, $payload, $enableLocalLogging);
 
             $this->buffer = [];
         } catch (\Throwable $e) {
@@ -654,6 +652,82 @@ class Telemetry_Client
             }
             // else swallow silently during shutdown
         }
+    }
+
+    /**
+     * Send telemetry data asynchronously (fire-and-forget)
+     * This prevents blocking the main request while waiting for Azure response
+     *
+     * @param string $url
+     * @param string $payload
+     * @param bool $enableLocalLogging
+     * @return void
+     */
+    protected function sendAsync(string $url, string $payload, bool $enableLocalLogging = false): void
+    {
+        try {
+            $client = new Client([
+                'timeout' => 5,         // Max 5 seconds total
+                'connect_timeout' => 2, // Max 2 seconds to connect
+            ]);
+
+            $promise = $client->postAsync($url, [
+                'headers' => [
+                    'Content-Type' => 'application/x-ndjson',
+                ],
+                'body' => $payload,
+                'query' => [
+                    'iKey' => $this->instrumentationKey,
+                ],
+            ]);
+
+            // Fire-and-forget: Don't wait for response in web requests
+            // For CLI/queue contexts, we can optionally wait
+            if ($this->shouldWaitForResponse()) {
+                $response = $promise->wait();
+                if ($enableLocalLogging && function_exists('logger')) {
+                    Logger::debug('Raw AppInsights response', ['body' => $response->getBody()->getContents()]);
+                }
+            } else {
+                // Register promise to be resolved later (non-blocking)
+                $promise->then(
+                    function ($response) use ($enableLocalLogging) {
+                        if ($enableLocalLogging && function_exists('logger')) {
+                            Logger::debug('Raw AppInsights async response', ['status' => $response->getStatusCode()]);
+                        }
+                    },
+                    function ($exception) {
+                        if (function_exists('logger')) {
+                            Logger::warning('AppInsights async request failed', ['error' => $exception->getMessage()]);
+                        }
+                    }
+                );
+
+                // Trigger the async request without blocking
+                Utils::queue()->run();
+            }
+        } catch (\Throwable $e) {
+            if (function_exists('logger')) {
+                Logger::error('AppInsights sendAsync failed: ' . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Determine if we should wait for the response
+     * In CLI/queue contexts, waiting is fine. In web requests, we don't wait.
+     *
+     * @return bool
+     */
+    protected function shouldWaitForResponse(): bool
+    {
+        // In CLI (artisan commands, queue workers), we can wait
+        if (php_sapi_name() === 'cli') {
+            return true;
+        }
+
+        // In web requests, don't block
+        return false;
     }
 
 

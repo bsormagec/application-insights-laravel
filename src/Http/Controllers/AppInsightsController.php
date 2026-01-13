@@ -117,7 +117,8 @@ class AppInsightsController extends Controller
                 }
             }
 
-            $this->flush();
+            // Flush removed from here - will happen at shutdown
+            // This prevents blocking the response while waiting for Azure
 
             return response()->json(['status' => 'ok']);
         } catch (\Throwable $e) {
