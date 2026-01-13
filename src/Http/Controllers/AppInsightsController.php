@@ -56,15 +56,10 @@ class AppInsightsController extends Controller
             $item['_context'] = $context;
         }
 
-        // Dispatch to queue and return immediately
-        try {
-            AppInsightsTelemetryQueue::dispatch($items)->onQueue('appinsights-queue');
-        } catch (\Throwable $e) {
-            // If queue fails, log but still return 200 (best effort)
-            Logger::warning('Failed to queue telemetry: ' . $e->getMessage());
-        }
+        // Dispatch AFTER response is sent to client (non-blocking)
+        AppInsightsTelemetryQueue::dispatchAfterResponse($items)->onQueue('appinsights-queue');
 
-        // Return immediately - no waiting for Azure
+        // Return immediately
         return response()->json(['status' => 'ok']);
     }
 }
