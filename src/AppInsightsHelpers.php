@@ -84,7 +84,7 @@ class AppInsightsHelpers
 
         $properties = $this->getRequestProperties($request);
         AIServer::trackRequest(
-            $properties['route'] ?? 'application',
+            $this->getRequestName($request),
             $request->fullUrl(),
             $this->getRequestDuration(),
             $this->getResponseCode($response),
@@ -203,13 +203,29 @@ class AppInsightsHelpers
             'ip' => $request->ip(),
             'pjax' => $request->pjax(),
             'secure' => $request->secure(),
+            'method' => $request->method(),
+            'path' => $request->path(),
         ];
 
-        if (
-            $request->route()
-            && $request->route()->getName()
-        ) {
-            $properties['route'] = $request->route()->getName();
+        if ($request->route()) {
+            // Add route name if available
+            if ($request->route()->getName()) {
+                $properties['route_name'] = $request->route()->getName();
+            }
+            
+            // Add route pattern (URI template)
+            if ($request->route()->uri()) {
+                $properties['route_pattern'] = $request->route()->uri();
+            }
+            
+            // Add controller action
+            $action = $request->route()->getActionName();
+            if ($action && $action !== 'Closure') {
+                $properties['route_action'] = $action;
+            }
+            
+            // Keep backward compatibility with 'route' key
+            $properties['route'] = $request->route()->getName() ?? $request->route()->uri();
         }
 
         if ($request->user()) {
@@ -221,6 +237,45 @@ class AppInsightsHelpers
         }
 
         return $properties;
+    }
+
+    /**
+     * Get a meaningful name for the request to send to Azure Insights
+     * Priority: Route Name > Route Pattern > Controller@Action > Method + Path
+     *
+     * @param $request
+     * @return string
+     */
+    private function getRequestName($request): string
+    {
+        // Priority 1: Use route name if available (e.g., "users.index")
+        if ($request->route() && $request->route()->getName()) {
+            return $request->route()->getName();
+        }
+        
+        $method = $request->method();
+        
+        // Priority 2: Use route URI pattern (e.g., "GET /api/users/{id}")
+        if ($request->route() && $request->route()->uri()) {
+            return $method . ' /' . $request->route()->uri();
+        }
+        
+        // Priority 3: Use Controller@action (e.g., "GET UserController@show")
+        if ($request->route()) {
+            $action = $request->route()->getActionName();
+            if ($action && $action !== 'Closure') {
+                // Extract just ControllerName@method from full namespace
+                $parts = explode('@', $action);
+                if (count($parts) === 2) {
+                    $controllerParts = explode('\\', $parts[0]);
+                    $controllerName = end($controllerParts);
+                    return $method . ' ' . $controllerName . '@' . $parts[1];
+                }
+            }
+        }
+        
+        // Priority 4: Fallback to method + path
+        return $method . ' ' . $request->path();
     }
 
 

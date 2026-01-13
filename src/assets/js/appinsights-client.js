@@ -270,10 +270,18 @@
 
         sendBatch: function (batch, attempt) {
             var self = this;
+            // Get CSRF token from meta tag if available
+            var csrfToken = document.querySelector('meta[name="csrf-token"]');
+            var headers = { "Content-Type": "application/json" };
+            
+            if (csrfToken) {
+                headers["X-CSRF-TOKEN"] = csrfToken.getAttribute("content");
+            }
+
             try {
                 fetch(this.collectEndpoint, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: headers,
                     body: JSON.stringify(batch)
                 }).then(function (res) {
                     if (!res.ok) throw new Error("HTTP error " + res.status);

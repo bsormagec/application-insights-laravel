@@ -12,7 +12,8 @@ class AppInsightsClient extends InstrumentationKey
      */
     public function javascript()
     {
-        $endpoint = url('/appinsights/collect');
+        // Use relative path to avoid Mixed Content issues (HTTP vs HTTPS mismatches)
+        $endpoint = '/appinsights/collect';
         $jsAsset = asset('vendor/app-insights-laravel/js/appinsights-client.min.js');
 
         // Get operation context from server for correlation
