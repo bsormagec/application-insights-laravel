@@ -113,4 +113,79 @@ return [
         'sanctum/*',
     ],
 
+    /*
+     * Cloud Role Name
+     * ================
+     *
+     * The name that appears on the Application Map for this component.
+     * This should be unique per application/service.
+     * Maps to: ai.cloud.role
+     * 
+     * Example: "TRACS-AI", "API-Gateway", "WebFrontend"
+     */
+    'cloud_role_name' => env('MS_AI_CLOUD_ROLE_NAME', env('APP_NAME', 'Laravel App')),
+
+    /*
+     * Cloud Role Instance
+     * ====================
+     *
+     * Instance identifier (e.g., server name, container ID, deployment slot).
+     * Use this to differentiate between deployment slots (production, staging).
+     * Maps to: ai.cloud.roleInstance
+     * 
+     * If not set, defaults to hostname + slot name (if running on Azure App Service).
+     * 
+     * Example: "n301-easi-tracs-app-production", "server-1"
+     */
+    'cloud_role_instance' => env('MS_AI_CLOUD_ROLE_INSTANCE', null),
+
+    /*
+     * Application Version
+     * ====================
+     *
+     * Version of your application for tracking deployments.
+     * Maps to: ai.application.ver
+     * 
+     * Useful for tracking performance changes between releases.
+     */
+    'application_version' => env('MS_AI_APP_VERSION', '1.0.0'),
+
+    /*
+     * Track Authenticated User
+     * =========================
+     *
+     * Enable automatic user ID tracking from authenticated users.
+     * Maps to: ai.user.authUserId
+     * 
+     * When enabled, the authenticated user's ID will be sent with all telemetry.
+     * Useful for tracking user-specific issues.
+     */
+    'track_authenticated_user' => env('MS_AI_TRACK_AUTH_USER', true),
+
+    /*
+     * Track Session
+     * ==============
+     *
+     * Enable session ID tracking.
+     * Maps to: ai.session.id
+     * 
+     * When enabled, the session ID will be sent with all telemetry.
+     * Useful for grouping telemetry by user session.
+     */
+    'track_session' => env('MS_AI_TRACK_SESSION', true),
+
+    /*
+     * Detect Synthetic Source
+     * ========================
+     *
+     * Automatically detect synthetic traffic (bots, health checks).
+     * Maps to: ai.operation.syntheticSource
+     * 
+     * When enabled, requests from known bots and health check paths
+     * will be marked as synthetic traffic, making it easier to filter
+     * them out in Azure Portal queries.
+     */
+    'detect_synthetic_source' => env('MS_AI_DETECT_SYNTHETIC', true),
+
 ];
+

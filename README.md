@@ -68,7 +68,36 @@ MS_AI_FEATURE_DB=true
 MS_AI_FEATURE_JOBS=true
 MS_AI_FEATURE_MAIL=true
 MS_AI_FEATURE_HTTP=true
+
+# Application Map & Correlation (NEW in v3.0.0)
+MS_AI_CLOUD_ROLE_NAME=MyApp          # Node name in Application Map
+MS_AI_CLOUD_ROLE_INSTANCE=production # Instance name (auto-detects Azure slot)
+MS_AI_APP_VERSION=1.0.0              # Application version
+
+# User & Session Tracking
+MS_AI_TRACK_AUTH_USER=true           # Track authenticated user IDs
+MS_AI_TRACK_SESSION=true             # Track session IDs
+MS_AI_DETECT_SYNTHETIC=true          # Detect bots and health checks
 ```
+
+### Azure App Service Configuration
+
+For proper Application Map rendering and slot differentiation:
+
+**Production slot:**
+```env
+MS_AI_CLOUD_ROLE_NAME=MyApp
+MS_AI_CLOUD_ROLE_INSTANCE=production
+```
+
+**Staging slot:**
+```env
+MS_AI_CLOUD_ROLE_NAME=MyApp
+MS_AI_CLOUD_ROLE_INSTANCE=staging
+```
+
+> **Tip:** If running on Azure App Service, the slot name is automatically detected from `WEBSITE_SLOT_NAME` environment variable.
+
 
 ### Where to find the Connection String
 
@@ -233,7 +262,44 @@ php artisan vendor:publish --tag=laravel-assets
 
 ## Changelog
 
+### v3.0.0 - Full SDK Parity Release 🎉
+
+This release brings **full feature parity** with Microsoft's official Application Insights SDKs (.NET, Node.js, Java).
+
+**New Context Tags (Application Map & Correlation):**
+- ✨ W3C Trace Context support - 32-char hex trace IDs for proper correlation
+- ✨ `ai.operation.name` - Operation names now appear in Performance blade
+- ✨ `ai.cloud.role` / `ai.cloud.roleInstance` - Application Map now renders correctly
+- ✨ Auto-detection of Azure deployment slots via `WEBSITE_SLOT_NAME`
+- ✨ `ai.application.ver`, `ai.internal.sdkVersion`, `ai.device.type` tags
+
+**New Methods:**
+- ✨ `trackAvailability()` - Track availability test results
+- ✨ `setOperationName()` / `getOperationName()` - Set operation name for Performance blade
+- ✨ `setAuthenticatedUserId()` - Track authenticated user IDs
+- ✨ `setSessionId()` - Track session IDs
+- ✨ `setSyntheticSource()` - Mark synthetic traffic (bots, health checks)
+
+**Enhanced Telemetry:**
+- ✨ `trackMetric()` now supports aggregation: `count`, `min`, `max`, `stdDev`, `namespace`
+- ✨ `trackRequest()` now includes span ID, source, and measurements
+- ✨ `trackDependency()` now includes resultCode, data, and measurements
+- ✨ `trackPageView()` now includes id, duration, and referredUri
+
+**New Configuration Options:**
+```env
+MS_AI_CLOUD_ROLE_NAME=MyApp          # Application Map node name
+MS_AI_CLOUD_ROLE_INSTANCE=prod       # Instance/slot identifier
+MS_AI_APP_VERSION=1.0.0              # Application version
+MS_AI_TRACK_AUTH_USER=true           # Track authenticated users
+MS_AI_TRACK_SESSION=true             # Track sessions
+MS_AI_DETECT_SYNTHETIC=true          # Detect bots/health checks
+```
+
+**⚠️ Note:** Live Metrics (QuickPulse) is not supported as it requires a WebSocket/SignalR connection that is architecturally incompatible with PHP's request-response model.
+
 ### v2.2.0
+
 - ✨ Added slow request tracking threshold (`MS_AI_REQUEST_SLOW_MS`)
 - ✨ Added automatic PageView tracking for Browser tab in Azure
 - ✨ Added BrowserTimings (page load performance) tracking

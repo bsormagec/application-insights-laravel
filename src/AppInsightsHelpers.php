@@ -10,10 +10,12 @@ use Illuminate\Support\Facades\Log;
 use Sormagec\AppInsightsLaravel\Facades\AppInsightsServerFacade as AIServer;
 use Sormagec\AppInsightsLaravel\Facades\AppInsightsQueueFacade as AIQueue;
 use Sormagec\AppInsightsLaravel\Support\Config;
+use Sormagec\AppInsightsLaravel\Support\ContextTagKeys;
 use Sormagec\AppInsightsLaravel\Support\PathExclusionTrait;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+
 
 class AppInsightsHelpers
 {
@@ -78,9 +80,32 @@ class AppInsightsHelpers
             return;
         }
 
+        $telemetryClient = $this->appInsights->telemetryClient;
+
         // Add Context Tags (IP, User Agent)
-        $this->appInsights->addContextTag('ai.location.ip', $request->ip());
-        $this->appInsights->addContextTag('ai.user.userAgent', $request->userAgent());
+        $telemetryClient->addContextTag(ContextTagKeys::LOCATION_IP, $request->ip());
+
+        // Track authenticated user if enabled
+        if (Config::get('track_authenticated_user', true) && $request->user()) {
+            $telemetryClient->setAuthenticatedUserId((string) $request->user()->id);
+        }
+
+        // Track session ID if enabled and available
+        if (Config::get('track_session', true) && $request->hasSession()) {
+            try {
+                $telemetryClient->setSessionId($request->session()->getId());
+            } catch (\Throwable $e) {
+                // Session might not be started yet
+            }
+        }
+
+        // Detect synthetic traffic (bots, health checks)
+        if (Config::get('detect_synthetic_source', true)) {
+            $syntheticSource = $this->detectSyntheticSource($request);
+            if ($syntheticSource) {
+                $telemetryClient->setSyntheticSource($syntheticSource);
+            }
+        }
 
         $properties = $this->getRequestProperties($request);
         AIServer::trackRequest(
@@ -94,6 +119,40 @@ class AppInsightsHelpers
         );
         $this->flush();
     }
+
+    /**
+     * Detect if request is from synthetic source (bot, health check, etc.)
+     * 
+     * @param Request $request
+     * @return string|null
+     */
+    private function detectSyntheticSource($request): ?string
+    {
+        $userAgent = strtolower($request->userAgent() ?? '');
+        $path = $request->path();
+
+        // Health check paths
+        $healthPaths = ['health', 'healthz', 'ready', 'readiness', 'liveness', 'ping'];
+        if (in_array($path, $healthPaths)) {
+            return 'HealthCheck';
+        }
+
+        // Azure availability tests
+        if (str_contains($userAgent, 'application insights')) {
+            return 'Availability';
+        }
+
+        // Common bot patterns
+        $botPatterns = ['bot', 'spider', 'crawler', 'slurp', 'googlebot', 'bingbot', 'yandex', 'baidu'];
+        foreach ($botPatterns as $pattern) {
+            if (str_contains($userAgent, $pattern)) {
+                return 'Bot';
+            }
+        }
+
+        return null;
+    }
+
 
     /**
      * Track application exceptions
@@ -212,18 +271,18 @@ class AppInsightsHelpers
             if ($request->route()->getName()) {
                 $properties['route_name'] = $request->route()->getName();
             }
-            
+
             // Add route pattern (URI template)
             if ($request->route()->uri()) {
                 $properties['route_pattern'] = $request->route()->uri();
             }
-            
+
             // Add controller action
             $action = $request->route()->getActionName();
             if ($action && $action !== 'Closure') {
                 $properties['route_action'] = $action;
             }
-            
+
             // Keep backward compatibility with 'route' key
             $properties['route'] = $request->route()->getName() ?? $request->route()->uri();
         }
@@ -252,14 +311,14 @@ class AppInsightsHelpers
         if ($request->route() && $request->route()->getName()) {
             return $request->route()->getName();
         }
-        
+
         $method = $request->method();
-        
+
         // Priority 2: Use route URI pattern (e.g., "GET /api/users/{id}")
         if ($request->route() && $request->route()->uri()) {
             return $method . ' /' . $request->route()->uri();
         }
-        
+
         // Priority 3: Use Controller@action (e.g., "GET UserController@show")
         if ($request->route()) {
             $action = $request->route()->getActionName();
@@ -273,7 +332,7 @@ class AppInsightsHelpers
                 }
             }
         }
-        
+
         // Priority 4: Fallback to method + path
         return $method . ' ' . $request->path();
     }
