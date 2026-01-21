@@ -23,6 +23,18 @@ return [
     'instrumentation_key' => env('MS_INSTRUMENTATION_KEY', null),
 
     /*
+     * Application ID
+     * ===============
+     * 
+     * The Application ID from Azure Portal (Configure > API Access).
+     * This is DIFFERENT from Instrumentation Key!
+     * Required for Application Map browser-to-server correlation.
+     * 
+     * Find it: Azure Portal > Application Insights > Configure > API Access > Application ID
+     */
+    'application_id' => env('MS_AI_APPLICATION_ID', null),
+
+    /*
      * Queue Flush Delay
      * ==================
      *
@@ -111,6 +123,23 @@ return [
         '_debugbar/*',
         'appinsights/*',
         'sanctum/*',
+    ],
+
+    /*
+     * Client-Side Telemetry
+     * ======================
+     *
+     * Control browser telemetry collection and dependency tracking.
+     */
+    'client' => [
+        // Enable or disable client-side telemetry collection
+        'enabled' => env('MS_AI_CLIENT_ENABLED', true),
+
+        // Track browser-originated HTTP dependencies (XHR/fetch)
+        'track_dependencies' => env('MS_AI_CLIENT_TRACK_DEPENDENCIES', true),
+
+        // Normalize dependency URLs (strip query strings and IDs for grouping)
+        'normalize_dependency_urls' => env('MS_AI_CLIENT_NORMALIZE_DEPENDENCY_URLS', true),
     ],
 
     /*

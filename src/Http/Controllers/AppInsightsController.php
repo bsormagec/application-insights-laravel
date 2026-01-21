@@ -41,6 +41,10 @@ class AppInsightsController extends Controller
         // Support batching: if multiple telemetry items are sent at once
         $items = isset($payload[0]) && is_array($payload) ? $payload : [$payload];
 
+        if (!config('appinsights-laravel.client.enabled', true)) {
+            return response()->json(['status' => 'ok']);
+        }
+
         // Limit batch size to prevent abuse
         if (count($items) > self::MAX_BATCH_SIZE) {
             $items = array_slice($items, 0, self::MAX_BATCH_SIZE);
@@ -59,7 +63,20 @@ class AppInsightsController extends Controller
         // Dispatch AFTER response is sent to client (non-blocking)
         AppInsightsTelemetryQueue::dispatchAfterResponse($items)->onQueue('appinsights-queue');
 
-        // Return immediately
-        return response()->json(['status' => 'ok']);
+        // Get instrumentation key for Application Map correlation
+        // Request-Context header tells browser the appId, which browser includes in dependency target
+        // This is how Azure links browser HTTP deps to server instance
+        $appId = config('appinsights-laravel.application_id');
+        if (!$appId) {
+            $appId = config('appinsights-laravel.instrumentation_key', '');
+        }
+
+        $response = response()->json(['status' => 'ok']);
+        if ($appId) {
+            $response->header('Request-Context', 'appId=cid-v1:' . $appId)
+                ->header('Access-Control-Expose-Headers', 'Request-Context');
+        }
+
+        return $response;
     }
 }

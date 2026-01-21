@@ -35,6 +35,13 @@
         return start ? Date.now() - parseInt(start, 10) : 0;
     }
 
+    function getCookie(name) {
+        var value = "; " + document.cookie;
+        var parts = value.split("; " + name + "=");
+        if (parts.length == 2) return parts.pop().split(";").shift();
+        return null;
+    }
+
     // ===========================================
     // MAIN SDK
     // ===========================================
@@ -44,9 +51,13 @@
         retryLimit: 3,
         retryDelay: 1000,
         collectEndpoint: window.AppInsightsConfig?.collectEndpoint || "/appinsights/collect",
+        appId: window.AppInsightsConfig?.appId || getCookie('ai_app_id') || null, // App ID for correlation
         operationId: window.AppInsightsConfig?.operationId || generateId(),
         parentId: window.AppInsightsConfig?.parentId || null,
+        operationName: window.AppInsightsConfig?.operationName || null,  // Route name from server for correlation
         excludedPaths: window.AppInsightsConfig?.excludedPaths || [],
+        trackDependencies: window.AppInsightsConfig?.trackDependencies !== false,
+        normalizeDependencyUrls: window.AppInsightsConfig?.normalizeDependencyUrls !== false,
         pageViewSent: false,
         userId: getUserId(),
         sessionId: getSessionId(),
@@ -88,6 +99,64 @@
         },
 
         /**
+         * Normalize dependency name for grouping
+         */
+        normalizeDependencyName: function (method, url) {
+            if (!this.normalizeDependencyUrls) {
+                return method + ' ' + url;
+            }
+
+            return method + ' ' + this.normalizeUrlPath(url);
+        },
+
+        getDependencyDisplayName: function (method, url, routePattern, routeName) {
+            if (routePattern) {
+                return method + ' ' + routePattern;
+            }
+
+            if (routeName) {
+                return method + ' ' + routeName;
+            }
+
+            return this.normalizeDependencyName(method, url);
+        },
+
+        normalizeUrlPath: function (url) {
+            try {
+                var urlObj = new URL(url, window.location.origin);
+                return this.normalizePath(urlObj.pathname || '/');
+            } catch (e) {
+                var cleaned = url.split('#')[0].split('?')[0];
+                return this.normalizePath(cleaned || '/');
+            }
+        },
+
+        normalizePath: function (path) {
+            var normalized = path || '/';
+            if (normalized.charAt(0) !== '/') {
+                normalized = '/' + normalized;
+            }
+
+            var parts = normalized.split('/');
+            for (var i = 0; i < parts.length; i++) {
+                var segment = parts[i];
+                if (!segment) continue;
+                if (this.isDynamicSegment(segment)) {
+                    parts[i] = '{id}';
+                }
+            }
+
+            return parts.join('/').replace(/\/{2,}/g, '/');
+        },
+
+        isDynamicSegment: function (segment) {
+            if (/^\d+$/.test(segment)) return true;
+            if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(segment)) return true;
+            if (/^[0-9a-f]{16,}$/i.test(segment)) return true;
+            return false;
+        },
+
+        /**
          * Get context to attach to all telemetry
          */
         getContext: function () {
@@ -100,6 +169,31 @@
                 operationId: this.operationId,
                 parentId: this.parentId
             };
+        },
+
+        /**
+         * Generate a smart page name for telemetry
+         * Priority: 1. Server-provided operationName (route name) for correlation
+         *           2. URL path as fallback
+         */
+        getPageName: function () {
+            // Prefer server-provided operation name (Laravel route name) for browser-server correlation
+            if (this.operationName) {
+                return this.operationName;
+            }
+
+            // Fall back to URL path
+            var path = window.location.pathname;
+            // Remove leading/trailing slashes and normalize
+            path = path.replace(/^\/+|\/+$/g, '');
+
+            // If path is empty (home page), use a meaningful name
+            if (!path || path === '') {
+                return 'Home';
+            }
+
+            // Return the clean path as the page name
+            return path;
         },
 
         /**
@@ -121,7 +215,7 @@
             properties = Object.assign({}, this.getContext(), properties);
             this.queue.push({
                 type: 'pageView',
-                name: name || document.title,
+                name: name || this.getPageName(),
                 url: url || window.location.href,
                 properties: properties,
                 measurements: measurements
@@ -146,10 +240,27 @@
 
         /**
          * Track a dependency (AJAX/fetch call)
+         * @param {string} name - Dependency name
+         * @param {string} url - Request URL
+         * @param {number} duration - Duration in ms
+         * @param {boolean} success - Was request successful
+         * @param {number} responseCode - HTTP status code
+         * @param {object} properties - Additional properties
+         * @param {string} correlationContext - Optional appId from Request-Context header for App Map correlation
          */
-        trackDependency: function (name, url, duration, success, responseCode, properties) {
+        trackDependency: function (name, url, duration, success, responseCode, properties, correlationContext) {
+            if (!this.trackDependencies) {
+                return;
+            }
+
             properties = properties || {};
             properties = Object.assign({}, this.getContext(), properties);
+
+            // Include correlation context for Application Map linking
+            if (correlationContext) {
+                properties.correlationContext = correlationContext;
+            }
+
             this.queue.push({
                 type: 'dependency',
                 name: name,
@@ -157,7 +268,8 @@
                 duration: duration,
                 success: success,
                 responseCode: responseCode,
-                properties: properties
+                properties: properties,
+                correlationContext: correlationContext  // Server's appId for App Map
             });
             if (this.queue.length >= this.batchSize) this.flush();
         },
@@ -222,7 +334,7 @@
 
             this.queue.push({
                 type: 'pageView',
-                name: document.title || 'Page View',
+                name: this.getPageName(),
                 url: window.location.href,
                 properties: properties,
                 measurements: measurements
@@ -231,7 +343,7 @@
             if (Object.keys(measurements).length > 0) {
                 this.queue.push({
                     type: 'browserTimings',
-                    name: document.title || 'Page View',
+                    name: this.getPageName(),
                     url: window.location.href,
                     properties: properties,
                     measurements: measurements
@@ -273,7 +385,7 @@
             // Get CSRF token from meta tag if available
             var csrfToken = document.querySelector('meta[name="csrf-token"]');
             var headers = { "Content-Type": "application/json" };
-            
+
             if (csrfToken) {
                 headers["X-CSRF-TOKEN"] = csrfToken.getAttribute("content");
             }
@@ -303,7 +415,32 @@
     // ===========================================
     // AJAX/FETCH TRACKING
     // ===========================================
-    (function () {
+
+    /**
+     * Extract appId from Request-Context header for Application Map correlation
+     * Format: "appId=cid-v1:xxxx-xxxx-xxxx" -> "cid-v1:xxxx-xxxx-xxxx"
+     */
+    function extractCorrelationContext(headerValue) {
+        if (!headerValue) return null;
+        // Parse "appId=cid-v1:xxxx" format
+        var match = headerValue.match(/appId=([^,\s]+)/);
+        return match ? match[1] : null;
+    }
+
+    if (ai.trackDependencies) {
+        (function () {
+        /**
+         * Generate a new span ID for each AJAX request
+         */
+        function generateSpanId() {
+            var chars = '0123456789abcdef';
+            var id = '';
+            for (var i = 0; i < 16; i++) {
+                id += chars[Math.floor(Math.random() * 16)];
+            }
+            return id;
+        }
+
         // Intercept XMLHttpRequest
         var originalXHROpen = XMLHttpRequest.prototype.open;
         var originalXHRSend = XMLHttpRequest.prototype.send;
@@ -312,6 +449,7 @@
             this._aiMethod = method;
             this._aiUrl = url;
             this._aiStartTime = null;
+            this._aiSpanId = generateSpanId();  // Generate span ID for this request
             return originalXHROpen.apply(this, arguments);
         };
 
@@ -319,19 +457,55 @@
             var xhr = this;
             xhr._aiStartTime = performance.now();
 
+            // Add correlation headers for Application Map (same as official SDK)
+            // This allows server to read the operationId and link browser deps to server requests
+            try {
+                if (xhr._aiUrl && xhr._aiUrl.indexOf('/appinsights/collect') === -1) {
+                    // Request-Id format: |operationId.spanId (AI format)
+                    var requestId = '|' + ai.operationId + '.' + xhr._aiSpanId;
+                    xhr.setRequestHeader('Request-Id', requestId);
+
+                    // traceparent format: 00-traceId-spanId-01 (W3C format) 
+                    var traceParent = '00-' + ai.operationId.replace(/-/g, '') + '-' + xhr._aiSpanId + '-01';
+                    xhr.setRequestHeader('traceparent', traceParent);
+
+                    // Request-Context: appId=cid-v1:APP_ID (Azure Correlation)
+                    // This allows server to know who is calling it and link in Application Map
+                    if (ai.appId) {
+                        xhr.setRequestHeader('Request-Context', 'appId=cid-v1:' + ai.appId);
+                    }
+                }
+            } catch (e) {
+                // May fail if headers already sent or CORS issue
+            }
+
             xhr.addEventListener('loadend', function () {
                 var duration = performance.now() - xhr._aiStartTime;
                 var success = xhr.status >= 200 && xhr.status < 400;
 
                 // Skip tracking our own telemetry endpoint and excluded paths
                 if (xhr._aiUrl && xhr._aiUrl.indexOf('/appinsights/collect') === -1 && !ai.isPathExcluded(xhr._aiUrl)) {
+                    // Extract Request-Context header for Application Map correlation
+                    var correlationContext = null;
+                    var routePattern = null;
+                    var routeName = null;
+                    try {
+                        var requestContext = xhr.getResponseHeader('Request-Context');
+                        correlationContext = extractCorrelationContext(requestContext);
+                        routePattern = xhr.getResponseHeader('X-AI-Route-Pattern');
+                        routeName = xhr.getResponseHeader('X-AI-Route-Name');
+                    } catch (e) {
+                        // Header may not be accessible (CORS, etc.)
+                    }
+
                     ai.trackDependency(
-                        xhr._aiMethod + ' ' + xhr._aiUrl,
+                        ai.getDependencyDisplayName(xhr._aiMethod, xhr._aiUrl, routePattern, routeName),
                         xhr._aiUrl,
                         Math.round(duration),
                         success,
                         xhr.status,
-                        { type: 'XHR' }
+                        { type: 'XHR', spanId: xhr._aiSpanId },
+                        correlationContext
                     );
                 }
             });
@@ -345,20 +519,55 @@
             var url = typeof input === 'string' ? input : input.url;
             var method = (init && init.method) || 'GET';
             var startTime = performance.now();
+            var spanId = generateSpanId();
 
-            return originalFetch.apply(this, arguments).then(function (response) {
+            // Add correlation headers for Application Map (same as official SDK)
+            // Skip our own telemetry endpoint
+            if (url.indexOf('/appinsights/collect') === -1) {
+                init = init || {};
+                init.headers = new Headers(init.headers || {});
+
+                // Request-Id format: |operationId.spanId (AI format)
+                var requestId = '|' + ai.operationId + '.' + spanId;
+                init.headers.set('Request-Id', requestId);
+
+                // traceparent format: 00-traceId-spanId-01 (W3C format)
+                var traceParent = '00-' + ai.operationId.replace(/-/g, '') + '-' + spanId + '-01';
+                init.headers.set('traceparent', traceParent);
+
+                // Request-Context: appId=cid-v1:APP_ID (Azure Correlation)
+                if (ai.appId) {
+                    init.headers.set('Request-Context', 'appId=cid-v1:' + ai.appId);
+                }
+            }
+
+            return originalFetch.call(this, input, init).then(function (response) {
                 var duration = performance.now() - startTime;
                 var success = response.ok;
 
                 // Skip tracking our own telemetry endpoint and excluded paths
                 if (url.indexOf('/appinsights/collect') === -1 && !ai.isPathExcluded(url)) {
+                    // Extract Request-Context header for Application Map correlation
+                    var correlationContext = null;
+                    var routePattern = null;
+                    var routeName = null;
+                    try {
+                        var requestContext = response.headers.get('Request-Context');
+                        correlationContext = extractCorrelationContext(requestContext);
+                        routePattern = response.headers.get('X-AI-Route-Pattern');
+                        routeName = response.headers.get('X-AI-Route-Name');
+                    } catch (e) {
+                        // Header may not be accessible (CORS, etc.)
+                    }
+
                     ai.trackDependency(
-                        method + ' ' + url,
+                        ai.getDependencyDisplayName(method, url, routePattern, routeName),
                         url,
                         Math.round(duration),
                         success,
                         response.status,
-                        { type: 'Fetch' }
+                        { type: 'Fetch', spanId: spanId },
+                        correlationContext
                     );
                 }
                 return response;
@@ -367,18 +576,19 @@
 
                 if (url.indexOf('/appinsights/collect') === -1 && !ai.isPathExcluded(url)) {
                     ai.trackDependency(
-                        method + ' ' + url,
+                        ai.getDependencyDisplayName(method, url, null, null),
                         url,
                         Math.round(duration),
                         false,
                         0,
-                        { type: 'Fetch', error: error.message }
+                        { type: 'Fetch', error: error.message, spanId: spanId }
                     );
                 }
                 throw error;
             });
         };
-    })();
+        })();
+    }
 
     // ===========================================
     // WEB VITALS (Core Web Vitals)

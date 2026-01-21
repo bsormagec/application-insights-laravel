@@ -402,11 +402,18 @@ class Telemetry_Client
             $baseData['measurements'] = $measurements;
         }
 
+        // Include ai.operation.name and ai.device.type for proper Azure Performance UI display
+        // ai.device.type = 'Browser' is required for Performance > Browser blade (filters by client_Type == 'Browser')
+        $tags = array_merge($this->contextTags, [
+            'ai.operation.name' => $name,
+            'ai.device.type' => 'Browser',  // Critical: Performance > Browser blade filters by client_Type == 'Browser'
+        ]);
+
         $payload = [
             'name' => 'Microsoft.ApplicationInsights.PageView',
             'time' => Carbon::now()->toIso8601ZuluString(),
             'iKey' => $this->instrumentationKey,
-            'tags' => $this->contextTags,
+            'tags' => $tags,
             'data' => [
                 'baseType' => 'PageViewData',
                 'baseData' => $baseData
@@ -521,11 +528,18 @@ class Telemetry_Client
             ? $this->formatDuration((float) $measurements['pageLoadTime'])
             : '00:00:00.000';
 
+        // Include ai.operation.name and ai.device.type for proper Azure Performance UI display
+        // ai.device.type = 'Browser' is required for Performance > Browser blade (filters by client_Type == 'Browser')
+        $tags = array_merge($this->contextTags, [
+            'ai.operation.name' => $name,
+            'ai.device.type' => 'Browser',  // Critical: Performance > Browser blade filters by client_Type == 'Browser'
+        ]);
+
         $payload = [
             'name' => 'Microsoft.ApplicationInsights.PageViewPerformance',
             'time' => Carbon::now()->toIso8601ZuluString(),
             'iKey' => $this->instrumentationKey,
-            'tags' => $this->contextTags,
+            'tags' => $tags,
             'data' => [
                 'baseType' => 'PageViewPerformanceData',
                 'baseData' => [
@@ -717,8 +731,11 @@ class Telemetry_Client
      */
     public function trackDbQuery(string $sql, float $durationMs, array $properties = [])
     {
+        $sanitizedSql = $this->sanitizeSql($sql);
+        $queryName = $this->extractQueryName($sql);
+
         $properties = array_merge($this->globalProperties ?? [], $properties, [
-            'db.sql' => $this->sanitizeSql($sql),
+            'db.sql' => $sanitizedSql,
             'db.duration_ms' => $durationMs,
         ]);
 
@@ -731,9 +748,9 @@ class Telemetry_Client
                 'baseType' => 'RemoteDependencyData',
                 'baseData' => [
                     'ver' => 2,
-                    'name' => 'SQL Query',
+                    'name' => $queryName,
                     'id' => bin2hex(random_bytes(8)),
-                    'data' => $this->sanitizeSql($sql),
+                    'data' => $sanitizedSql,
                     'duration' => $this->formatDuration($durationMs),
                     'success' => true,
                     'type' => 'SQL',
@@ -744,6 +761,54 @@ class Telemetry_Client
         ];
 
         $this->sendPayload($payload);
+    }
+
+    /**
+     * Extract a descriptive name from SQL query (e.g., "SELECT users", "INSERT profiles")
+     * 
+     * @param string $sql The SQL query
+     * @return string A descriptive name for the query
+     */
+    protected function extractQueryName(string $sql): string
+    {
+        $sql = trim($sql);
+
+        // Common SQL operations with table extraction patterns
+        $patterns = [
+            // SELECT ... FROM table
+            '/^\s*(SELECT)\s+.*?\s+FROM\s+[`"\[]?(\w+)[`"\]]?/is' => '$1 $2',
+            // INSERT INTO table
+            '/^\s*(INSERT)\s+INTO\s+[`"\[]?(\w+)[`"\]]?/is' => '$1 $2',
+            // UPDATE table
+            '/^\s*(UPDATE)\s+[`"\[]?(\w+)[`"\]]?/is' => '$1 $2',
+            // DELETE FROM table
+            '/^\s*(DELETE)\s+FROM\s+[`"\[]?(\w+)[`"\]]?/is' => '$1 $2',
+            // REPLACE INTO table
+            '/^\s*(REPLACE)\s+INTO\s+[`"\[]?(\w+)[`"\]]?/is' => '$1 $2',
+            // TRUNCATE table
+            '/^\s*(TRUNCATE)\s+(?:TABLE\s+)?[`"\[]?(\w+)[`"\]]?/is' => '$1 $2',
+            // ALTER TABLE table
+            '/^\s*(ALTER\s+TABLE)\s+[`"\[]?(\w+)[`"\]]?/is' => '$1 $2',
+            // CREATE TABLE table
+            '/^\s*(CREATE\s+TABLE)\s+(?:IF\s+NOT\s+EXISTS\s+)?[`"\[]?(\w+)[`"\]]?/is' => '$1 $2',
+            // DROP TABLE table
+            '/^\s*(DROP\s+TABLE)\s+(?:IF\s+EXISTS\s+)?[`"\[]?(\w+)[`"\]]?/is' => '$1 $2',
+        ];
+
+        foreach ($patterns as $pattern => $replacement) {
+            if (preg_match($pattern, $sql, $matches)) {
+                $operation = strtoupper(trim($matches[1]));
+                $table = $matches[2];
+                return "{$operation} {$table}";
+            }
+        }
+
+        // Fallback: just get the first word (operation type)
+        if (preg_match('/^\s*(\w+)/i', $sql, $matches)) {
+            return strtoupper($matches[1]);
+        }
+
+        return 'SQL Query';
     }
 
     /**
@@ -758,6 +823,7 @@ class Telemetry_Client
      * @param string|null $data Command/URL/query string
      * @param array $properties Additional properties to include.
      * @param array $measurements Additional measurements to include.
+     * @param bool $isBrowser Whether this dependency originated from browser (sets client_Type = 'Browser')
      * @return void
      */
     public function trackDependency(
@@ -769,9 +835,18 @@ class Telemetry_Client
         ?string $resultCode = null,
         ?string $data = null,
         array $properties = [],
-        array $measurements = []
+        array $measurements = [],
+        bool $isBrowser = false,
+        ?string $correlationContext = null  // For Application Map: links browser dependency to server request
     ): void {
         $properties = array_merge($this->globalProperties ?? [], $properties);
+
+        // Append correlationContext to target for Azure Application Map correlation
+        // Format: "hostname | cid-v1:operationId" - this links browser deps to server requests
+        $targetWithCorrelation = $target;
+        if ($correlationContext) {
+            $targetWithCorrelation = $target . ' | ' . $correlationContext;
+        }
 
         $baseData = [
             'ver' => 2,
@@ -780,7 +855,7 @@ class Telemetry_Client
             'duration' => $this->formatDuration($durationMs),
             'success' => $success,
             'type' => $type,
-            'target' => $target,
+            'target' => $targetWithCorrelation,
             'properties' => $properties,
         ];
 
@@ -794,11 +869,19 @@ class Telemetry_Client
             $baseData['measurements'] = $measurements;
         }
 
+        // For browser-originated dependencies, set ai.device.type = 'Browser'
+        $tags = $this->contextTags;
+        if ($isBrowser) {
+            $tags = array_merge($tags, [
+                'ai.device.type' => 'Browser',  // Performance > Browser > Dependencies filters by client_Type == 'Browser'
+            ]);
+        }
+
         $payload = [
             'name' => 'Microsoft.ApplicationInsights.RemoteDependency',
             'time' => Carbon::now()->toIso8601ZuluString(),
             'iKey' => $this->instrumentationKey,
-            'tags' => $this->contextTags,
+            'tags' => $tags,
             'data' => [
                 'baseType' => 'RemoteDependencyData',
                 'baseData' => $baseData

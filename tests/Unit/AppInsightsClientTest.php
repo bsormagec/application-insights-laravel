@@ -20,3 +20,21 @@ it('includes correlation ids in javascript snippet', function () {
     expect($html)->toContain('operationId:');
     expect($html)->toContain('parentId:');
 });
+
+it('includes dependency tracking toggle in javascript snippet', function () {
+    config(['appinsights-laravel.client.track_dependencies' => false]);
+
+    $client = new AppInsightsClient();
+    $html = $client->javascript();
+
+    expect($html)->toContain('trackDependencies: false');
+});
+
+it('returns empty snippet when client telemetry is disabled', function () {
+    config(['appinsights-laravel.client.enabled' => false]);
+
+    $client = new AppInsightsClient();
+    $html = $client->javascript();
+
+    expect(trim($html))->toBe('');
+});

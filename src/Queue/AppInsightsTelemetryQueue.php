@@ -9,6 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Sormagec\AppInsightsLaravel\Facades\AppInsightsServerFacade as AIServer;
+use Sormagec\AppInsightsLaravel\Support\Config;
 
 class AppInsightsTelemetryQueue implements ShouldQueue
 {
@@ -57,6 +58,20 @@ class AppInsightsTelemetryQueue implements ShouldQueue
     protected function processItem(array $item): void
     {
         $type = $item['type'] ?? null;
+
+        // Skip items without a valid type
+        if (empty($type)) {
+            return;
+        }
+
+        if (!Config::get('client.enabled', true)) {
+            return;
+        }
+
+        if ($type === 'dependency' && !Config::get('client.track_dependencies', true)) {
+            return;
+        }
+
         $context = $item['_context'] ?? [];
 
         // Add context tags
@@ -94,12 +109,22 @@ class AppInsightsTelemetryQueue implements ShouldQueue
             'pageView' => AIServer::trackPageView(
                 $item['name'] ?? 'Unknown Page',
                 $item['url'] ?? '',
+                // Duration: prefer explicit, fallback to measurements.pageLoadTime
+                isset($item['duration'])
+                ? (float) $item['duration']
+                : (isset($item['measurements']['pageLoadTime']) ? (float) $item['measurements']['pageLoadTime'] : null),
+                $item['referredUri'] ?? null,
                 $item['properties'] ?? [],
                 $item['measurements'] ?? []
             ),
             'metric' => AIServer::trackMetric(
                 $item['name'] ?? 'Unknown Metric',
                 (float) ($item['value'] ?? 0),
+                null,  // count
+                null,  // min
+                null,  // max
+                null,  // stdDev
+                null,  // namespace
                 $item['properties'] ?? []
             ),
             'browserTimings' => AIServer::trackBrowserTimings(
@@ -114,10 +139,14 @@ class AppInsightsTelemetryQueue implements ShouldQueue
                 $item['name'] ?? 'HTTP Request',
                 (float) ($item['duration'] ?? 0),
                 $item['success'] ?? true,
-                array_merge($item['properties'] ?? [], [
-                    'responseCode' => $item['responseCode'] ?? 0,
-                    'url' => $item['url'] ?? ''
-                ])
+                isset($item['responseCode']) ? (string) $item['responseCode'] : null,  // resultCode
+                $item['url'] ?? null,  // data
+                $item['properties'] ?? [],  // properties
+                [],  // measurements
+                true,  // isBrowser - these are browser-originated AJAX/fetch dependencies
+                // NOTE: Do NOT add cid-v1 to target - Azure correlates via operation_Id, not target appId
+                // Adding cid-v1 actually breaks the Application Map visualization
+                null
             ),
             default => Log::warning('Unknown telemetry type in queue', ['type' => $type]),
         };
